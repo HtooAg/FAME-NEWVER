@@ -133,10 +133,15 @@ export default function StageManagerPage() {
 								</h1>
 								<p className="text-sm text-gray-500">
 									{data?.user?.profile?.firstName}{" "}
-									{data?.user?.profile?.lastName}
+									{data?.user?.profile?.lastName} •{" "}
+									{data?.user?.email}
 									{data?.events &&
 										data.events.length > 0 &&
-										` • ${data.events[0].name}`}
+										` • Managing ${
+											data.events.length
+										} event${
+											data.events.length !== 1 ? "s" : ""
+										}`}
 								</p>
 							</div>
 						</div>
@@ -168,12 +173,78 @@ export default function StageManagerPage() {
 				<div className="mb-8">
 					<div className="text-center">
 						<h2 className="text-3xl font-bold text-gray-900 mb-2">
-							Welcome, {data?.user?.profile?.firstName}!
+							Welcome, {data?.user?.profile?.firstName}{" "}
+							{data?.user?.profile?.lastName}!
 						</h2>
-						<p className="text-lg text-gray-600">
+						<p className="text-lg text-gray-600 mb-2">
 							Manage your events and create amazing experiences
 						</p>
+						<div className="flex justify-center items-center space-x-4 text-sm text-gray-500">
+							<span>Stage Manager ID: {data?.user?.id}</span>
+							<span>•</span>
+							<span>
+								Status:{" "}
+								<span className="capitalize font-medium text-green-600">
+									{data?.user?.status}
+								</span>
+							</span>
+						</div>
 					</div>
+				</div>
+
+				{/* Statistics Cards */}
+				<div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+					<Card className="bg-white border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+						<CardContent className="p-6">
+							<div className="flex items-center">
+								<Calendar className="h-8 w-8 text-purple-600" />
+								<div className="ml-4">
+									<p className="text-sm font-medium text-gray-500">
+										Total Events
+									</p>
+									<p className="text-2xl font-bold text-gray-900">
+										{data?.stats?.totalEvents || 0}
+									</p>
+								</div>
+							</div>
+						</CardContent>
+					</Card>
+					<Card className="bg-white border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+						<CardContent className="p-6">
+							<div className="flex items-center">
+								<div className="h-8 w-8 bg-green-100 rounded-full flex items-center justify-center">
+									<div className="h-4 w-4 bg-green-600 rounded-full"></div>
+								</div>
+								<div className="ml-4">
+									<p className="text-sm font-medium text-gray-500">
+										Active Events
+									</p>
+									<p className="text-2xl font-bold text-gray-900">
+										{data?.stats?.activeEvents || 0}
+									</p>
+								</div>
+							</div>
+						</CardContent>
+					</Card>
+					<Card className="bg-white border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+						<CardContent className="p-6">
+							<div className="flex items-center">
+								<div className="h-8 w-8 bg-blue-100 rounded-full flex items-center justify-center">
+									<span className="text-blue-600 font-bold text-sm">
+										A
+									</span>
+								</div>
+								<div className="ml-4">
+									<p className="text-sm font-medium text-gray-500">
+										Total Artists
+									</p>
+									<p className="text-2xl font-bold text-gray-900">
+										{data?.stats?.totalArtists || 0}
+									</p>
+								</div>
+							</div>
+						</CardContent>
+					</Card>
 				</div>
 
 				{/* My Events Section */}
@@ -186,6 +257,7 @@ export default function StageManagerPage() {
 							</CardTitle>
 							<CardDescription className="text-purple-100">
 								Manage your assigned events and create new ones
+								(Filtered by your Stage Manager ID)
 							</CardDescription>
 						</CardHeader>
 						<CardContent>
@@ -201,12 +273,57 @@ export default function StageManagerPage() {
 					</Card>
 				</div>
 
+				{/* Stage Manager Info Card */}
+				<div className="mb-8">
+					<Card className="bg-white border border-gray-200 shadow-sm">
+						<CardHeader>
+							<CardTitle className="text-lg font-semibold text-gray-900">
+								Stage Manager Profile
+							</CardTitle>
+						</CardHeader>
+						<CardContent>
+							<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+								<div>
+									<p className="text-sm font-medium text-gray-500">
+										Full Name
+									</p>
+									<p className="text-lg font-semibold text-gray-900">
+										{data?.user?.profile?.firstName}{" "}
+										{data?.user?.profile?.lastName}
+									</p>
+								</div>
+								<div>
+									<p className="text-sm font-medium text-gray-500">
+										Email
+									</p>
+									<p className="text-lg text-gray-900">
+										{data?.user?.email}
+									</p>
+								</div>
+								<div>
+									<p className="text-sm font-medium text-gray-500">
+										Manager ID
+									</p>
+									<p className="text-lg font-mono text-gray-900">
+										{data?.user?.id}
+									</p>
+								</div>
+							</div>
+						</CardContent>
+					</Card>
+				</div>
+
 				{/* Events List */}
 				{data?.events && data.events.length > 0 ? (
 					<div>
-						<h3 className="text-xl font-semibold text-gray-900 mb-4">
-							Your Events ({data.events.length})
-						</h3>
+						<div className="flex justify-between items-center mb-4">
+							<h3 className="text-xl font-semibold text-gray-900">
+								Your Events ({data.events.length})
+							</h3>
+							<p className="text-sm text-gray-500">
+								Filtered by Stage Manager ID: {data?.user?.id}
+							</p>
+						</div>
 						<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
 							{data.events.map((event, index) => (
 								<Card
@@ -247,6 +364,24 @@ export default function StageManagerPage() {
 											<p className="text-sm text-gray-700 line-clamp-2">
 												{event.description}
 											</p>
+
+											<div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
+												<span className="font-medium">
+													Stage Manager:
+												</span>{" "}
+												{data?.user?.profile?.firstName}{" "}
+												{data?.user?.profile?.lastName}
+												{(event as any)
+													.stageManagerId && (
+													<span className="ml-2">
+														• ID:{" "}
+														{
+															(event as any)
+																.stageManagerId
+														}
+													</span>
+												)}
+											</div>
 
 											<div className="space-y-4">
 												<div className="p-2 bg-gray-100 rounded-md text-sm break-all">

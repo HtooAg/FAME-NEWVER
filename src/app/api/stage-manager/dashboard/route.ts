@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionFromRequest } from "@/lib/session";
 import { APIResponse } from "@/types";
-import { getEventsForStageManager } from "@/lib/gcs";
+import { getEventsForStageManager, getUserByEmail } from "@/lib/gcs";
 
 export async function GET(request: NextRequest) {
 	try {
@@ -36,14 +36,33 @@ export async function GET(request: NextRequest) {
 			);
 		}
 
-		// Get events for this stage manager
+		// Get the actual stage manager user data
+		const stageManager = await getUserByEmail(session.email);
+
+		if (!stageManager) {
+			return NextResponse.json<APIResponse>(
+				{
+					success: false,
+					error: {
+						code: "USER_NOT_FOUND",
+						message: "Stage manager profile not found",
+					},
+				},
+				{ status: 404 }
+			);
+		}
+
+		// Get events for this stage manager (filtered by their ID)
 		const events = await getEventsForStageManager(session.userId);
 
 		// Calculate stats
 		const stats = {
 			totalEvents: events.length,
 			activeEvents: events.filter(
-				(e) => e.status === "active" || e.status === "registration_open"
+				(e) =>
+					e.status === "active" ||
+					e.status === "registration_open" ||
+					e.status === "live"
 			).length,
 			totalArtists: events.reduce(
 				(sum, event) => sum + (event.artists?.length || 0),
@@ -55,13 +74,14 @@ export async function GET(request: NextRequest) {
 			success: true,
 			data: {
 				user: {
-					id: session.userId,
-					email: session.email,
-					role: session.role,
-					status: session.status,
+					id: stageManager.id,
+					email: stageManager.email,
+					role: stageManager.role,
+					status: stageManager.status,
 					profile: {
-						firstName: "Stage",
-						lastName: "Manager",
+						firstName: stageManager.profile?.firstName || "Stage",
+						lastName: stageManager.profile?.lastName || "Manager",
+						phone: stageManager.profile?.phone || "",
 					},
 				},
 				stats,
@@ -73,6 +93,7 @@ export async function GET(request: NextRequest) {
 					startDate: event.date,
 					endDate: event.date,
 					description: event.description || `Event at ${event.venue}`,
+					stageManagerId: event.stageManagerId,
 				})),
 			},
 		});

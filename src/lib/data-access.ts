@@ -87,8 +87,11 @@ class DataAccess {
 	}
 
 	async getUserByEmail(email: string): Promise<User | null> {
-		const users = await this.getAllUsers();
-		return users.find((user) => user.email === email) || null;
+		// Only search in active stage managers who can login
+		const activeUsers =
+			(await this.readJson<User[]>("users/stage_manager/users.json")) ||
+			[];
+		return activeUsers.find((user) => user.email === email) || null;
 	}
 
 	async createUser(user: User): Promise<void> {

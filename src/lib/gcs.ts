@@ -350,16 +350,12 @@ export async function deleteEvent(eventId: string) {
 // User management functions
 export async function getAllUsers() {
 	try {
-		// Get users from all registration files
+		// Get users from pending registrations and active users
 		const pendingUsers = await getPendingUsers();
-		const approvedUsers = await getStageManagers();
-		const rejectedUsers =
-			(await readJsonFile<any[]>(
-				"registrations/stage-managers/rejected.json"
-			)) || [];
+		const activeUsers = await getStageManagers();
 
 		// Combine all users
-		const allUsers = [...pendingUsers, ...approvedUsers, ...rejectedUsers];
+		const allUsers = [...pendingUsers, ...activeUsers];
 		return allUsers;
 	} catch (error) {
 		console.error("Error getting all users:", error);
@@ -383,11 +379,9 @@ export async function getPendingUsers() {
 
 export async function getStageManagers() {
 	try {
-		// Fetch approved/active stage managers from the specific GCS path
+		// Fetch approved/active stage managers from the users directory
 		const activeStageManagers =
-			(await readJsonFile<any[]>(
-				"registrations/stage-managers/approved.json"
-			)) || [];
+			(await readJsonFile<any[]>("users/stage_manager/users.json")) || [];
 		return activeStageManagers;
 	} catch (error) {
 		console.error("Error getting stage managers:", error);
@@ -427,27 +421,14 @@ export async function updateUserStatus(
 			pendingUsers
 		);
 
-		// If approved, add to approved list
+		// If approved, add to users directory so they can login
 		if (status === "active") {
-			const approvedUsers = await getStageManagers();
-			approvedUsers.push(user);
-			await writeJsonFile(
-				"registrations/stage-managers/approved.json",
-				approvedUsers
-			);
+			const activeUsers = await getStageManagers();
+			activeUsers.push(user);
+			await writeJsonFile("users/stage_manager/users.json", activeUsers);
 		}
-		// If rejected, we could add to a rejected.json file if needed
-		else if (status === "rejected") {
-			const rejectedUsers =
-				(await readJsonFile<any[]>(
-					"registrations/stage-managers/rejected.json"
-				)) || [];
-			rejectedUsers.push(user);
-			await writeJsonFile(
-				"registrations/stage-managers/rejected.json",
-				rejectedUsers
-			);
-		}
+		// If rejected, just remove from pending (don't store rejected users)
+		// The user is already removed from pending list above
 
 		return user;
 	} catch (error) {
@@ -464,22 +445,26 @@ export async function getUser(userId: string) {
 
 		if (user) return user;
 
-		// Search in approved users
-		const approvedUsers = await getStageManagers();
-		user = approvedUsers.find((user) => user.id === userId);
-
-		if (user) return user;
-
-		// Search in rejected users
-		const rejectedUsers =
-			(await readJsonFile<any[]>(
-				"registrations/stage-managers/rejected.json"
-			)) || [];
-		user = rejectedUsers.find((user) => user.id === userId);
+		// Search in active users (who can login)
+		const activeUsers = await getStageManagers();
+		user = activeUsers.find((user) => user.id === userId);
 
 		return user || null;
 	} catch (error) {
 		console.error("Error getting user:", error);
+		return null;
+	}
+}
+
+// Get user by email for authentication (only active users can login)
+export async function getUserByEmail(email: string) {
+	try {
+		// Only search in active users who can login
+		const activeUsers = await getStageManagers();
+		const user = activeUsers.find((user) => user.email === email);
+		return user || null;
+	} catch (error) {
+		console.error("Error getting user by email:", error);
 		return null;
 	}
 }
@@ -521,26 +506,15 @@ export async function initializeDataStructure() {
 			console.log("Pending registrations structure initialized (empty)");
 		}
 
-		const approvedUsers = await readJsonFile(
-			"registrations/stage-managers/approved.json"
+		// Initialize users structure for approved stage managers (who can login)
+		const activeUsers = await readJsonFile(
+			"users/stage_manager/users.json"
 		);
-		if (!approvedUsers) {
-			await writeJsonFile(
-				"registrations/stage-managers/approved.json",
-				[]
+		if (!activeUsers) {
+			await writeJsonFile("users/stage_manager/users.json", []);
+			console.log(
+				"Active stage manager users structure initialized (empty)"
 			);
-			console.log("Approved registrations structure initialized (empty)");
-		}
-
-		const rejectedUsers = await readJsonFile(
-			"registrations/stage-managers/rejected.json"
-		);
-		if (!rejectedUsers) {
-			await writeJsonFile(
-				"registrations/stage-managers/rejected.json",
-				[]
-			);
-			console.log("Rejected registrations structure initialized (empty)");
 		}
 
 		// Initialize events structure if it doesn't exist (empty)
