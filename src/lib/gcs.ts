@@ -1,5 +1,6 @@
 import { Storage } from "@google-cloud/storage";
 import { readLocalJsonFile, writeLocalJsonFile } from "./local-storage";
+import { Event } from "@/types";
 
 // Check if we're in development mode and GCS is not properly configured
 const isDevelopment = process.env.NODE_ENV === "development";
@@ -119,6 +120,78 @@ export async function uploadFile(
 
 	const bucketName = process.env.GOOGLE_CLOUD_BUCKET_NAME || "fame-data";
 	return `gs://${bucketName}/${fileName}`;
+}
+
+// Upload file with metadata for the upload API
+export async function uploadFileWithMetadata(
+	fileBuffer: Buffer,
+	originalName: string,
+	mimeType: string,
+	uploadPath: string,
+	uploadedBy: string,
+	metadata: {
+		category: string;
+		eventId?: string;
+		userRole: string;
+	}
+) {
+	// Validate file size based on category
+	const maxSize =
+		metadata.category === "image"
+			? UPLOAD_CONFIG.maxImageSize
+			: metadata.category === "audio"
+			? UPLOAD_CONFIG.maxAudioSize
+			: UPLOAD_CONFIG.maxFileSize;
+
+	if (fileBuffer.length > maxSize) {
+		throw new Error(
+			`File size exceeds maximum allowed size for ${metadata.category} files`
+		);
+	}
+
+	// Validate file type
+	const allowedTypes =
+		metadata.category === "image"
+			? UPLOAD_CONFIG.allowedImageTypes
+			: metadata.category === "audio"
+			? UPLOAD_CONFIG.allowedAudioTypes
+			: UPLOAD_CONFIG.allowedDocumentTypes;
+
+	if (!allowedTypes.includes(mimeType)) {
+		throw new Error(
+			`File type ${mimeType} not allowed for ${metadata.category} files`
+		);
+	}
+
+	// Generate unique file ID and create filename
+	const fileId = generateFileId();
+	const extension = getFileExtension(originalName);
+	const fileName = `${fileId}${extension}`;
+	const fullPath = `${uploadPath}/${fileName}`;
+
+	// Upload to GCS or local storage
+	let url: string;
+	if (useLocalStorage || !bucket) {
+		// For local development, create a local file path
+		url = `/uploads/${fullPath}`;
+		// In a real implementation, you'd save the file locally here
+	} else {
+		url = await uploadFile(fullPath, fileBuffer, mimeType);
+	}
+
+	return {
+		id: fileId,
+		filename: fileName,
+		originalName,
+		mimeType,
+		size: fileBuffer.length,
+		url,
+		uploadedBy,
+		uploadedAt: new Date(),
+		category: metadata.category,
+		eventId: metadata.eventId,
+		userRole: metadata.userRole,
+	};
 }
 
 export async function downloadFile(fileName: string): Promise<Buffer> {
@@ -280,10 +353,12 @@ export async function getEvent(eventId: string) {
 
 export async function updateEvent(eventId: string, eventData: any) {
 	try {
-		const existingEvent = await getEvent(eventId);
-		if (!existingEvent) {
+		const existingEventData = await getEvent(eventId);
+		if (!existingEventData) {
 			throw new Error("Event not found");
 		}
+
+		const existingEvent = existingEventData as Event;
 
 		const updatedEvent = {
 			...existingEvent,

@@ -3,10 +3,11 @@ import { getSession, getSessionFromRequest } from "./session";
 import { UserRole, UserStatus, SessionData, APIResponse } from "@/types";
 
 // Route protection for API routes
-export async function withAuth<T = any>(
+export function withAuth<T = any>(
 	handler: (
 		request: NextRequest,
-		session: SessionData
+		session: SessionData,
+		context?: any
 	) => Promise<NextResponse<APIResponse<T>>>,
 	options?: {
 		requiredRole?: UserRole;
@@ -14,7 +15,8 @@ export async function withAuth<T = any>(
 	}
 ) {
 	return async (
-		request: NextRequest
+		request: NextRequest,
+		context?: any
 	): Promise<NextResponse<APIResponse<T>>> => {
 		try {
 			// Get session from request
@@ -66,7 +68,7 @@ export async function withAuth<T = any>(
 			}
 
 			// Call the protected handler
-			return await handler(request, session);
+			return await handler(request, session, context);
 		} catch (error) {
 			console.error("Route protection error:", error);
 			return NextResponse.json<APIResponse>(

@@ -70,7 +70,11 @@ export const POST = withAuth(async (request: NextRequest, session) => {
 			url: uploadedFile.url,
 			uploadedBy: uploadedFile.uploadedBy,
 			uploadedAt: uploadedFile.uploadedAt,
-			category: uploadedFile.category,
+			category: uploadedFile.category as
+				| "image"
+				| "audio"
+				| "video"
+				| "document",
 		};
 
 		// Store file metadata in appropriate location
