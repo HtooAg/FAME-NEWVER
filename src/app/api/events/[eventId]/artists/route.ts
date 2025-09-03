@@ -1,26 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
 import { EventGCSService } from "@/lib/gcs";
+import { APIResponse } from "@/types";
 
 export async function GET(
 	request: NextRequest,
 	{ params }: { params: { eventId: string } }
 ) {
 	try {
-		const { eventId } = params;
+		const eventId = params.eventId;
 
-		// Fetch artists from Google Cloud Storage
+		// Get artists for this event
 		const artists = await EventGCSService.getArtists(eventId);
 
-		return NextResponse.json({
+		return NextResponse.json<APIResponse>({
 			success: true,
-			artists: artists,
+			data: artists,
 		});
 	} catch (error) {
-		console.error("Error fetching artists:", error);
-		return NextResponse.json(
+		console.error("Get artists error:", error);
+		return NextResponse.json<APIResponse>(
 			{
 				success: false,
-				error: "Failed to fetch artists from Google Cloud Storage",
+				error: {
+					code: "INTERNAL_ERROR",
+					message: "Failed to fetch artists",
+				},
 			},
 			{ status: 500 }
 		);
@@ -32,51 +36,74 @@ export async function POST(
 	{ params }: { params: { eventId: string } }
 ) {
 	try {
-		const { eventId } = params;
-		const body = await request.json();
+		const eventId = params.eventId;
+		const artistData = await request.json();
+
+		// Generate unique artist ID
+		const artistId = `artist-${Date.now()}-${Math.random()
+			.toString(36)
+			.substr(2, 9)}`;
+
+		// Create artist object
+		const artist = {
+			id: artistId,
+			eventId,
+			artistName: artistData.artistName,
+			realName: artistData.realName,
+			email: artistData.email,
+			phone: artistData.phone,
+			style: artistData.style,
+			performanceType: artistData.performanceType,
+			performanceDuration: artistData.performanceDuration,
+			biography: artistData.biography,
+			costumeColor: artistData.costumeColor,
+			customCostumeColor: artistData.customCostumeColor,
+			lightColorSingle: artistData.lightColorSingle,
+			lightColorTwo: artistData.lightColorTwo,
+			lightColorThree: artistData.lightColorThree,
+			lightRequests: artistData.lightRequests,
+			stagePositionStart: artistData.stagePositionStart,
+			stagePositionEnd: artistData.stagePositionEnd,
+			customStagePosition: artistData.customStagePosition,
+			equipment: artistData.equipment,
+			showLink: artistData.showLink,
+			socialMedia: artistData.socialMedia,
+			mcNotes: artistData.mcNotes,
+			stageManagerNotes: artistData.stageManagerNotes,
+			notes: artistData.notes,
+			eventName: artistData.eventName,
+			musicTracks: artistData.musicTracks || [],
+			galleryFiles: artistData.galleryFiles || [],
+			status: "pending",
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+		};
 
 		// Get existing artists
 		const existingArtists = await EventGCSService.getArtists(eventId);
 
 		// Add new artist
-		const newArtist = {
-			id: `artist-${Date.now()}-${Math.random()
-				.toString(36)
-				.substr(2, 9)}`,
-			...body,
-			eventId,
-			createdAt: new Date().toISOString(),
-			updatedAt: new Date().toISOString(),
-		};
+		const updatedArtists = [...existingArtists, artist];
 
-		const updatedArtists = [...existingArtists, newArtist];
+		// Save updated artists list
+		await EventGCSService.saveArtists(eventId, updatedArtists);
 
-		// Save to GCS
-		const saved = await EventGCSService.saveArtists(
-			eventId,
-			updatedArtists
-		);
-
-		if (!saved) {
-			return NextResponse.json(
-				{
-					success: false,
-					error: "Failed to save artist to Google Cloud Storage",
-				},
-				{ status: 500 }
-			);
-		}
-
-		return NextResponse.json({
+		return NextResponse.json<APIResponse>({
 			success: true,
-			data: newArtist,
+			data: {
+				id: artistId,
+				artist,
+			},
 		});
 	} catch (error) {
-		console.error("Error creating artist:", error);
-		return NextResponse.json(
+		console.error("Create artist error:", error);
+		return NextResponse.json<APIResponse>(
 			{
 				success: false,
-				error: "Failed to create artist",
+				error: {
+					code: "INTERNAL_ERROR",
+					message: "Failed to create artist registration",
+				},
 			},
 			{ status: 500 }
 		);
