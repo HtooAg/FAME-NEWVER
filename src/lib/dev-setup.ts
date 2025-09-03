@@ -52,7 +52,6 @@ export async function createDevUsers() {
 				},
 				createdAt: new Date(),
 				lastLogin: new Date(),
-				eventId: "dev_event_001",
 			},
 		];
 

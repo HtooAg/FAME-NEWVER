@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionFromRequest } from "@/lib/session";
-import { APIResponse } from "@/types";
+import { APIResponse, Event } from "@/types";
 import { getEvent, updateEvent, deleteEvent } from "@/lib/gcs";
 
 export async function GET(
 	request: NextRequest,
-	{ params }: { params: { eventId: string } }
+	{ params }: { params: Promise<{ eventId: string }> }
 ) {
 	try {
+		const resolvedParams = await params;
 		const session = getSessionFromRequest(request);
 
 		if (!session) {
@@ -39,9 +40,9 @@ export async function GET(
 			);
 		}
 
-		const event = await getEvent(params.eventId);
+		const eventData = await getEvent(resolvedParams.eventId);
 
-		if (!event) {
+		if (!eventData) {
 			return NextResponse.json<APIResponse>(
 				{
 					success: false,
@@ -53,6 +54,8 @@ export async function GET(
 				{ status: 404 }
 			);
 		}
+
+		const event = eventData as Event;
 
 		// Check if user has access to this event
 		if (
@@ -93,9 +96,10 @@ export async function GET(
 
 export async function PUT(
 	request: NextRequest,
-	{ params }: { params: { eventId: string } }
+	{ params }: { params: Promise<{ eventId: string }> }
 ) {
 	try {
+		const resolvedParams = await params;
 		const session = getSessionFromRequest(request);
 
 		if (!session) {
@@ -127,9 +131,9 @@ export async function PUT(
 			);
 		}
 
-		const event = await getEvent(params.eventId);
+		const eventData = await getEvent(resolvedParams.eventId);
 
-		if (!event) {
+		if (!eventData) {
 			return NextResponse.json<APIResponse>(
 				{
 					success: false,
@@ -141,6 +145,8 @@ export async function PUT(
 				{ status: 404 }
 			);
 		}
+
+		const event = eventData as Event;
 
 		// Check if user has access to this event
 		if (
@@ -161,7 +167,7 @@ export async function PUT(
 		}
 
 		const body = await request.json();
-		const updatedEvent = await updateEvent(params.eventId, body);
+		const updatedEvent = await updateEvent(resolvedParams.eventId, body);
 
 		return NextResponse.json<APIResponse>({
 			success: true,
@@ -184,9 +190,10 @@ export async function PUT(
 
 export async function DELETE(
 	request: NextRequest,
-	{ params }: { params: { eventId: string } }
+	{ params }: { params: Promise<{ eventId: string }> }
 ) {
 	try {
+		const resolvedParams = await params;
 		const session = getSessionFromRequest(request);
 
 		if (!session) {
@@ -218,9 +225,9 @@ export async function DELETE(
 			);
 		}
 
-		const event = await getEvent(params.eventId);
+		const eventData = await getEvent(resolvedParams.eventId);
 
-		if (!event) {
+		if (!eventData) {
 			return NextResponse.json<APIResponse>(
 				{
 					success: false,
@@ -232,6 +239,8 @@ export async function DELETE(
 				{ status: 404 }
 			);
 		}
+
+		const event = eventData as Event;
 
 		// Check if user has access to this event
 		if (
@@ -251,7 +260,7 @@ export async function DELETE(
 			);
 		}
 
-		await deleteEvent(params.eventId);
+		await deleteEvent(resolvedParams.eventId);
 
 		return NextResponse.json<APIResponse>({
 			success: true,

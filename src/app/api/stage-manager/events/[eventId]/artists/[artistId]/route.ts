@@ -4,9 +4,10 @@ import { APIResponse } from "@/types";
 
 export async function PUT(
 	request: NextRequest,
-	{ params }: { params: { eventId: string; artistId: string } }
+	{ params }: { params: Promise<{ eventId: string; artistId: string }> }
 ) {
 	try {
+		const resolvedParams = await params;
 		const session = getSessionFromRequest(request);
 
 		if (!session) {
@@ -71,8 +72,8 @@ export async function PUT(
 			success: true,
 			data: {
 				message: `Artist ${approvalStatus} successfully`,
-				artistId: params.artistId,
-				eventId: params.eventId,
+				artistId: resolvedParams.artistId,
+				eventId: resolvedParams.eventId,
 				approvalStatus,
 			},
 		});

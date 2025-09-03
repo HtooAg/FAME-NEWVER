@@ -15,20 +15,12 @@ export const GET = withAuth(async (request: NextRequest, session) => {
 		const userFiles = await readJsonFile<MediaFile[]>(
 			`users/${session.userId}/files.json`
 		);
-		if (userFiles) {
+		if (userFiles !== null && Array.isArray(userFiles)) {
 			allFiles.push(...userFiles);
 		}
 
 		// Artist functionality removed - focusing on stage manager workflow
 		const targetEventId = eventId || session.eventId;
-		if (false) {
-			const eventFiles = await readJsonFile<MediaFile[]>(
-				`events/${targetEventId}/files/${session.userId}.json`
-			);
-			if (eventFiles) {
-				allFiles.push(...eventFiles);
-			}
-		}
 
 		// Filter by category if specified
 		if (category) {

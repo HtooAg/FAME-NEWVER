@@ -9,100 +9,90 @@ import {
 import { APIResponse, MediaFile, SessionData } from "@/types";
 
 // Get file information
-export const GET = withAuth(
-	async (
-		request: NextRequest,
-		session: SessionData,
-		context?: { params: Record<string, string> }
-	) => {
-		try {
-			const fileId = context?.params?.fileId;
+export const GET = withAuth(async (request: NextRequest, session, context) => {
+	try {
+		const { fileId } = await context.params;
 
-			if (!fileId) {
-				return NextResponse.json<APIResponse>(
-					{
-						success: false,
-						error: {
-							code: "MISSING_FILE_ID",
-							message: "File ID is required",
-						},
-					},
-					{ status: 400 }
-				);
-			}
-
-			// Find file in user's files or event files
-			let mediaFile: MediaFile | null = null;
-			let filePath: string | null = null;
-
-			// Check user files
-			const userFiles = await readJsonFile<MediaFile[]>(
-				`users/${session.userId}/files.json`
-			);
-			if (userFiles) {
-				mediaFile = userFiles.find((f) => f.id === fileId) || null;
-				if (mediaFile) {
-					filePath = `uploads/user/${session.userId}/${mediaFile.category}`;
-				}
-			}
-
-			// Artist functionality removed - focusing on stage manager workflow
-
-			if (!mediaFile || !filePath) {
-				return NextResponse.json<APIResponse>(
-					{
-						success: false,
-						error: {
-							code: "FILE_NOT_FOUND",
-							message: "File not found or access denied",
-						},
-					},
-					{ status: 404 }
-				);
-			}
-
-			// Generate fresh signed URL
-			const fullFilePath = `${filePath}/${mediaFile.filename}`;
-			const signedUrl = await getSignedUrl(
-				fullFilePath,
-				"read",
-				new Date(Date.now() + 24 * 60 * 60 * 1000)
-			); // 24 hours
-
-			return NextResponse.json<APIResponse>({
-				success: true,
-				data: {
-					file: {
-						...mediaFile,
-						url: signedUrl,
-					},
-				},
-			});
-		} catch (error) {
-			console.error("Get file error:", error);
+		if (!fileId) {
 			return NextResponse.json<APIResponse>(
 				{
 					success: false,
 					error: {
-						code: "INTERNAL_ERROR",
-						message: "Failed to retrieve file",
+						code: "MISSING_FILE_ID",
+						message: "File ID is required",
 					},
 				},
-				{ status: 500 }
+				{ status: 400 }
 			);
 		}
+
+		// Find file in user's files or event files
+		let mediaFile: MediaFile | null = null;
+		let filePath: string | null = null;
+
+		// Check user files
+		const userFiles = await readJsonFile<MediaFile[]>(
+			`users/${session.userId}/files.json`
+		);
+		if (userFiles) {
+			mediaFile = userFiles.find((f) => f.id === fileId) || null;
+			if (mediaFile) {
+				filePath = `uploads/user/${session.userId}/${mediaFile.category}`;
+			}
+		}
+
+		// Artist functionality removed - focusing on stage manager workflow
+
+		if (!mediaFile || !filePath) {
+			return NextResponse.json<APIResponse>(
+				{
+					success: false,
+					error: {
+						code: "FILE_NOT_FOUND",
+						message: "File not found or access denied",
+					},
+				},
+				{ status: 404 }
+			);
+		}
+
+		// Generate fresh signed URL
+		const fullFilePath = `${filePath}/${mediaFile.filename}`;
+		const signedUrl = await getSignedUrl(
+			fullFilePath,
+			"read",
+			new Date(Date.now() + 24 * 60 * 60 * 1000)
+		); // 24 hours
+
+		return NextResponse.json<APIResponse>({
+			success: true,
+			data: {
+				file: {
+					...mediaFile,
+					url: signedUrl,
+				},
+			},
+		});
+	} catch (error) {
+		console.error("Get file error:", error);
+		return NextResponse.json<APIResponse>(
+			{
+				success: false,
+				error: {
+					code: "INTERNAL_ERROR",
+					message: "Failed to retrieve file",
+				},
+			},
+			{ status: 500 }
+		);
 	}
-);
+});
 
 // Delete file
 export const DELETE = withAuth(
-	async (
-		request: NextRequest,
-		session: SessionData,
-		context?: { params: Record<string, string> }
-	) => {
+	async (request: NextRequest, session, context) => {
 		try {
-			const fileId = context?.params?.fileId;
+			const { fileId } = await context.params;
 
 			if (!fileId) {
 				return NextResponse.json<APIResponse>(

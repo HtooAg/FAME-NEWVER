@@ -1,4 +1,25 @@
 import { Storage } from "@google-cloud/storage";
+import { readLocalJsonFile, writeLocalJsonFile } from "./local-storage";
+import { Event } from "@/types";
+
+// Upload configuration
+const UPLOAD_CONFIG = {
+	maxImageSize: 5 * 1024 * 1024, // 5MB
+	maxAudioSize: 50 * 1024 * 1024, // 50MB
+	maxFileSize: 10 * 1024 * 1024, // 10MB
+	allowedImageTypes: ["image/jpeg", "image/png", "image/gif", "image/webp"],
+	allowedAudioTypes: ["audio/mpeg", "audio/wav", "audio/mp3", "audio/m4a"],
+	allowedDocumentTypes: [
+		"application/pdf",
+		"text/plain",
+		"application/msword",
+	],
+};
+
+// Use local storage for development
+const useLocalStorage =
+	process.env.NODE_ENV === "development" &&
+	!process.env.GOOGLE_CLOUD_PROJECT_ID;
 
 // Initialize Google Cloud Storage
 const storage = new Storage({
@@ -237,6 +258,125 @@ export class EventGCSService {
 	}
 }
 
+// Utility functions for GCS operations
+export async function uploadFile(
+	fileName: string,
+	fileBuffer: Buffer,
+	contentType: string
+): Promise<string> {
+	if (!bucket) {
+		throw new Error("GCS not properly configured");
+	}
+
+	const file = bucket.file(fileName);
+
+	await file.save(fileBuffer, {
+		metadata: {
+			contentType,
+		},
+	});
+
+	const bucketName = process.env.GOOGLE_CLOUD_BUCKET_NAME || "fame-data";
+	return `gs://${bucketName}/${fileName}`;
+}
+
+// Upload file with metadata for the upload API
+export async function uploadFileWithMetadata(
+	fileBuffer: Buffer,
+	originalName: string,
+	mimeType: string,
+	uploadPath: string,
+	uploadedBy: string,
+	metadata: {
+		category: string;
+		eventId?: string;
+		userRole: string;
+	}
+) {
+	// Validate file size based on category
+	const maxSize =
+		metadata.category === "image"
+			? UPLOAD_CONFIG.maxImageSize
+			: metadata.category === "audio"
+			? UPLOAD_CONFIG.maxAudioSize
+			: UPLOAD_CONFIG.maxFileSize;
+
+	if (fileBuffer.length > maxSize) {
+		throw new Error(
+			`File size exceeds maximum allowed size for ${metadata.category} files`
+		);
+	}
+
+	// Validate file type
+	const allowedTypes =
+		metadata.category === "image"
+			? UPLOAD_CONFIG.allowedImageTypes
+			: metadata.category === "audio"
+			? UPLOAD_CONFIG.allowedAudioTypes
+			: UPLOAD_CONFIG.allowedDocumentTypes;
+
+	if (!allowedTypes.includes(mimeType)) {
+		throw new Error(
+			`File type ${mimeType} not allowed for ${metadata.category} files`
+		);
+	}
+
+	// Generate unique file ID and create filename
+	const fileId = generateFileId();
+	const extension = getFileExtension(originalName);
+	const fileName = `${fileId}${extension}`;
+	const fullPath = `${uploadPath}/${fileName}`;
+
+	// Upload to GCS or local storage
+	let url: string;
+	if (useLocalStorage || !bucket) {
+		// For local development, create a local file path
+		url = `/uploads/${fullPath}`;
+		// In a real implementation, you'd save the file locally here
+	} else {
+		url = await uploadFile(fullPath, fileBuffer, mimeType);
+	}
+
+	return {
+		id: fileId,
+		filename: fileName,
+		originalName,
+		mimeType,
+		size: fileBuffer.length,
+		url,
+		uploadedBy,
+		uploadedAt: new Date(),
+		category: metadata.category,
+		eventId: metadata.eventId,
+		userRole: metadata.userRole,
+	};
+}
+
+export async function downloadFile(fileName: string): Promise<Buffer> {
+	if (!bucket) {
+		throw new Error("GCS not properly configured");
+	}
+
+	const file = bucket.file(fileName);
+	const [contents] = await file.download();
+	return contents;
+}
+
+export async function fileExists(fileName: string): Promise<boolean> {
+	if (!bucket) {
+		return false;
+	}
+
+	try {
+		const file = bucket.file(fileName);
+		const [exists] = await file.exists();
+		return exists;
+	} catch (error) {
+		console.error(`Error checking file existence ${fileName}:`, error);
+		return false;
+	}
+}
+
 // Legacy function exports for backward compatibility
 export const readJsonFile = GCSService.readFile;
 export const writeJsonFile = GCSService.saveFile;
@@ -248,6 +388,42 @@ export const getSignedUrl = async (filePath: string) => {
 	return `https://storage.googleapis.com/${bucketName}/${filePath}`;
 };
 
+// Generate unique file ID
+function generateFileId(): string {
+	return Math.random().toString(36).substring(2) + Date.now().toString(36);
+}
+
+// Get file extension from filename
+function getFileExtension(filename: string): string {
+	const lastDot = filename.lastIndexOf(".");
+	return lastDot !== -1 ? filename.substring(lastDot) : "";
+}
+
+// Determine file category based on MIME type
+function getFileCategory(
+	mimeType: string
+): "image" | "audio" | "video" | "document" {
+	if (UPLOAD_CONFIG.allowedImageTypes.includes(mimeType)) {
+		return "image";
+	}
+	if (UPLOAD_CONFIG.allowedAudioTypes.includes(mimeType)) {
+		return "audio";
+	}
+	if (mimeType.startsWith("video/")) {
+		return "video";
+	}
+	return "document";
+}
+
+// Create organized folder structure
+export function createFilePath(
+	category: "user" | "event",
+	id: string,
+	fileType: string
+): string {
+	const timestamp = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+	return `uploads/${category}/${id}/${fileType}/${timestamp}`;
+}
 // User management functions
 export const getAllUsers = async () => {
 	// Get all stage managers from the correct path

@@ -3,11 +3,11 @@ import { getSession, getSessionFromRequest } from "./session";
 import { UserRole, UserStatus, SessionData, APIResponse } from "@/types";
 
 // Route protection for API routes
-export async function withAuth<T = any>(
+export function withAuth<T = any>(
 	handler: (
 		request: NextRequest,
 		session: SessionData,
-		context?: { params: Record<string, string> }
+		context?: any
 	) => Promise<NextResponse<APIResponse<T>>>,
 	options?: {
 		requiredRole?: UserRole;
@@ -16,7 +16,7 @@ export async function withAuth<T = any>(
 ) {
 	return async (
 		request: NextRequest,
-		context?: { params: Record<string, string> }
+		context?: any
 	): Promise<NextResponse<APIResponse<T>>> => {
 		try {
 			// Get session from request
