@@ -1,131 +1,233 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import Link from "next/link";
-import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
-	ArrowLeft,
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from "@/components/ui/table";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
 	Music,
-	Upload,
+	Clock,
+	ArrowLeft,
+	Calendar,
 	Play,
 	Pause,
+	SkipForward,
 	Volume2,
 	Headphones,
 } from "lucide-react";
-import { FameLogo } from "@/components/ui/fame-logo";
+import { motion } from "framer-motion";
+import Image from "next/image";
+import Link from "next/link";
+
+interface Artist {
+	id: string;
+	artistName: string;
+	realName?: string;
+	style: string;
+	performanceDuration: number;
+	performanceOrder: number | null;
+	performanceStatus?: string;
+	trackUrl?: string;
+	backingTrack?: string;
+}
+
+interface ShowOrderItem {
+	id: string;
+	type: "artist" | "cue";
+	artist?: Artist;
+	performanceOrder: number;
+	status?:
+		| "not_started"
+		| "next_on_deck"
+		| "next_on_stage"
+		| "currently_on_stage"
+		| "completed";
+}
 
 interface Event {
 	id: string;
 	name: string;
-	venue: string;
+	venueName: string;
+	showDates: string[];
 }
 
-interface MusicTrack {
-	id: string;
-	name: string;
-	artist: string;
-	duration: string;
-	genre: string;
-	bpm?: number;
-}
-
-export default function DJManagementPage() {
+export default function DJDashboard() {
 	const params = useParams();
 	const router = useRouter();
 	const eventId = params.eventId as string;
+
 	const [event, setEvent] = useState<Event | null>(null);
+	const [showOrderItems, setShowOrderItems] = useState<ShowOrderItem[]>([]);
 	const [loading, setLoading] = useState(true);
-	const [tracks, setTracks] = useState<MusicTrack[]>([]);
-	const [currentTrack, setCurrentTrack] = useState<string | null>(null);
+	const [selectedPerformanceDate, setSelectedPerformanceDate] =
+		useState<string>("");
+	const [eventDates, setEventDates] = useState<string[]>([]);
+	const [currentlyPlaying, setCurrentlyPlaying] = useState<string | null>(
+		null
+	);
 
 	useEffect(() => {
 		if (eventId) {
-			fetchEvent();
-			loadTracks();
+			fetchEventData();
 		}
 	}, [eventId]);
 
-	const fetchEvent = async () => {
+	useEffect(() => {
+		if (selectedPerformanceDate) {
+			fetchPerformanceOrder();
+		}
+	}, [selectedPerformanceDate]);
+
+	const fetchEventData = async () => {
 		try {
-			const response = await fetch(
-				`/api/stage-manager/events/${eventId}`
-			);
+			const response = await fetch(`/api/events/${eventId}`);
 			if (response.ok) {
-				const result = await response.json();
-				if (result.success) {
-					setEvent(result.data.event);
+				const data = await response.json();
+				const evt = data.data || data;
+				setEvent({
+					id: evt.id,
+					name: evt.name,
+					venueName: evt.venueName,
+					showDates: evt.showDates || [],
+				});
+
+				// Set up dates
+				const showDates = evt.showDates || [];
+				if (showDates.length > 0) {
+					const dates = showDates.map(
+						(date: string) => date.split("T")[0]
+					);
+					setEventDates(dates);
+					if (!selectedPerformanceDate) {
+						setSelectedPerformanceDate(dates[0]);
+					}
 				}
-			} else if (response.status === 403) {
-				router.push("/login");
-			} else if (response.status === 404) {
-				router.push("/stage-manager/events");
 			}
 		} catch (error) {
-			console.error("Error fetching event:", error);
+			console.error("Error fetching event data:", error);
+		}
+	};
+
+	const fetchPerformanceOrder = async () => {
+		if (!selectedPerformanceDate) return;
+
+		try {
+			setLoading(true);
+
+			// Fetch artists
+			const response = await fetch(`/api/events/${eventId}/artists`);
+			if (response.ok) {
+				const data = await response.json();
+				const artists = (data.artists || []).map((artist: any) => ({
+					id: artist.id,
+					artistName: artist.artistName,
+					realName: artist.realName,
+					style: artist.style,
+					performanceDuration: artist.performanceDuration || 30,
+					performanceOrder: artist.performanceOrder || null,
+					performanceStatus:
+						artist.performanceStatus || "not_started",
+					trackUrl: artist.trackUrl,
+					backingTrack: artist.backingTrack,
+				}));
+
+				// Create show order items from artists
+				const artistItems = artists
+					.filter((a: Artist) => a.performanceOrder !== null)
+					.map((artist: Artist, index: number) => ({
+						id: artist.id,
+						type: "artist" as const,
+						artist,
+						performanceOrder: artist.performanceOrder || index + 1,
+						status: (artist.performanceStatus ||
+							"not_started") as ShowOrderItem["status"],
+					}))
+					.sort((a, b) => a.performanceOrder - b.performanceOrder);
+
+				setShowOrderItems(artistItems);
+			}
+		} catch (error) {
+			console.error("Error fetching performance order:", error);
 		} finally {
 			setLoading(false);
 		}
 	};
 
-	const loadTracks = () => {
-		// Mock music tracks
-		const mockTracks = [
-			{
-				id: "1",
-				name: "Summer Vibes",
-				artist: "DJ Cool",
-				duration: "3:45",
-				genre: "House",
-				bpm: 128,
-			},
-			{
-				id: "2",
-				name: "Night Energy",
-				artist: "Beat Master",
-				duration: "4:12",
-				genre: "Electronic",
-				bpm: 132,
-			},
-			{
-				id: "3",
-				name: "Crowd Pleaser",
-				artist: "Mix King",
-				duration: "3:28",
-				genre: "Pop",
-				bpm: 120,
-			},
-		];
-		setTracks(mockTracks);
+	const getItemStatus = (item: ShowOrderItem, index: number) => {
+		if (item.status) return item.status;
+		if (index === 0) return "currently_on_stage";
+		if (index === 1) return "next_on_stage";
+		if (index === 2) return "next_on_deck";
+		return "not_started";
 	};
 
-	const togglePlay = (trackId: string) => {
-		if (currentTrack === trackId) {
-			setCurrentTrack(null);
-		} else {
-			setCurrentTrack(trackId);
+	const getRowColorClasses = (status: string) => {
+		switch (status) {
+			case "completed":
+				return "bg-red-50 border-red-200";
+			case "currently_on_stage":
+				return "bg-green-50 border-green-200";
+			case "next_on_stage":
+				return "bg-yellow-50 border-yellow-200";
+			case "next_on_deck":
+				return "bg-blue-50 border-blue-200";
+			default:
+				return "bg-background";
 		}
 	};
 
-	const getGenreColor = (genre: string) => {
-		const colors = {
-			House: "bg-blue-100 text-blue-800",
-			Electronic: "bg-purple-100 text-purple-800",
-			Pop: "bg-pink-100 text-pink-800",
-			Hip: "bg-green-100 text-green-800",
-			Rock: "bg-red-100 text-red-800",
-		};
-		return (
-			colors[genre as keyof typeof colors] || "bg-gray-100 text-gray-800"
-		);
+	const getStatusBadge = (status: string) => {
+		switch (status) {
+			case "completed":
+				return (
+					<Badge className="bg-red-500 text-white">Completed</Badge>
+				);
+			case "currently_on_stage":
+				return (
+					<Badge className="bg-green-500 text-white">
+						Currently On Stage
+					</Badge>
+				);
+			case "next_on_stage":
+				return (
+					<Badge className="bg-yellow-500 text-white">
+						Next On Stage
+					</Badge>
+				);
+			case "next_on_deck":
+				return (
+					<Badge className="bg-blue-500 text-white">
+						Next On Deck
+					</Badge>
+				);
+			default:
+				return <Badge variant="outline">Not Started</Badge>;
+		}
+	};
+
+	const handlePlayTrack = (artistId: string) => {
+		if (currentlyPlaying === artistId) {
+			setCurrentlyPlaying(null);
+		} else {
+			setCurrentlyPlaying(artistId);
+		}
 	};
 
 	if (loading) {
@@ -133,22 +235,7 @@ export default function DJManagementPage() {
 			<div className="min-h-screen bg-gray-50 flex items-center justify-center">
 				<div className="text-center">
 					<div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
-					<p className="text-gray-600">Loading DJ management...</p>
-				</div>
-			</div>
-		);
-	}
-
-	if (!event) {
-		return (
-			<div className="min-h-screen bg-gray-50 flex items-center justify-center">
-				<div className="text-center">
-					<h2 className="text-2xl font-bold text-gray-900 mb-4">
-						Event Not Found
-					</h2>
-					<Link href="/stage-manager/events">
-						<Button>Back to Events</Button>
-					</Link>
+					<p className="text-gray-600">Loading DJ dashboard...</p>
 				</div>
 			</div>
 		);
@@ -156,234 +243,386 @@ export default function DJManagementPage() {
 
 	return (
 		<div className="min-h-screen bg-gray-50">
-			{/* Header */}
 			<header className="bg-white shadow-sm border-b">
 				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 					<div className="flex justify-between items-center h-16">
 						<div className="flex items-center">
 							<Link
 								href={`/stage-manager/events/${eventId}`}
-								className="flex items-center"
+								className="mr-4"
 							>
-								<FameLogo
-									width={40}
-									height={40}
-									className="mr-3"
-								/>
-								<div>
-									<h1 className="text-xl font-semibold text-gray-900">
-										DJ Management
-									</h1>
-									<p className="text-sm text-gray-500">
-										{event.name} • {event.venue}
-									</p>
-								</div>
-							</Link>
-						</div>
-						<div className="flex items-center space-x-4">
-							<Button className="bg-purple-600 hover:bg-purple-700">
-								<Upload className="h-4 w-4 mr-2" />
-								Upload Music
-							</Button>
-							<Link href={`/stage-manager/events/${eventId}`}>
-								<Button variant="outline">
+								<Button variant="ghost" size="sm">
 									<ArrowLeft className="h-4 w-4 mr-2" />
 									Back to Event
 								</Button>
 							</Link>
+							<Image
+								src="/fame-logo.png"
+								alt="FAME Logo"
+								width={40}
+								height={40}
+								className="mr-3"
+							/>
+							<div>
+								<h1 className="text-xl font-semibold text-gray-900">
+									DJ Dashboard
+								</h1>
+								<p className="text-sm text-gray-500">
+									{event?.name} at {event?.venueName}
+								</p>
+							</div>
+						</div>
+						<div className="flex items-center gap-4">
+							{eventDates.length > 1 && (
+								<div className="flex items-center gap-2">
+									<Calendar className="h-4 w-4" />
+									<Select
+										value={selectedPerformanceDate}
+										onValueChange={
+											setSelectedPerformanceDate
+										}
+									>
+										<SelectTrigger className="w-[180px]">
+											<SelectValue placeholder="Select show date" />
+										</SelectTrigger>
+										<SelectContent>
+											{eventDates.map((date, index) => (
+												<SelectItem
+													key={date}
+													value={date}
+												>
+													Day {index + 1} -{" "}
+													{new Date(
+														date
+													).toLocaleDateString()}
+												</SelectItem>
+											))}
+										</SelectContent>
+									</Select>
+								</div>
+							)}
+							<div className="flex items-center gap-2">
+								<Music className="h-5 w-5" />
+								<span className="text-sm text-muted-foreground">
+									Music & Tracks
+								</span>
+							</div>
 						</div>
 					</div>
 				</div>
 			</header>
 
 			<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-				{/* DJ Status */}
-				<div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-					<Card>
-						<CardContent className="p-6">
-							<div className="flex items-center">
-								<Headphones className="h-8 w-8 text-green-600" />
-								<div className="ml-4">
-									<p className="text-2xl font-bold text-gray-900">
-										READY
-									</p>
-									<p className="text-sm text-gray-600">
-										DJ Status
-									</p>
+				{/* Current Status Section */}
+				<div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+					{/* Currently Playing */}
+					<Card className="border-green-500 bg-green-50">
+						<CardHeader className="pb-3">
+							<CardTitle className="text-lg text-green-700 flex items-center gap-2">
+								<div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+								Currently On Stage
+							</CardTitle>
+						</CardHeader>
+						<CardContent>
+							{showOrderItems.length > 0 &&
+							showOrderItems[0]?.type === "artist" ? (
+								<div className="flex items-center gap-4">
+									<Avatar className="h-12 w-12">
+										<AvatarFallback>
+											{showOrderItems[0]
+												.artist!.artistName.charAt(0)
+												.toUpperCase()}
+										</AvatarFallback>
+									</Avatar>
+									<div>
+										<h3 className="font-semibold text-lg">
+											{
+												showOrderItems[0].artist!
+													.artistName
+											}
+										</h3>
+										<div className="flex items-center gap-2 text-sm text-muted-foreground">
+											<Badge variant="outline">
+												{
+													showOrderItems[0].artist!
+														.style
+												}
+											</Badge>
+											<span className="flex items-center gap-1">
+												<Clock className="h-3 w-3" />
+												{
+													showOrderItems[0].artist!
+														.performanceDuration
+												}{" "}
+												min
+											</span>
+										</div>
+									</div>
 								</div>
-							</div>
+							) : (
+								<div className="text-center text-muted-foreground">
+									<Music className="h-8 w-8 mx-auto mb-2 opacity-50" />
+									<p>No performance currently on stage</p>
+								</div>
+							)}
 						</CardContent>
 					</Card>
 
-					<Card>
-						<CardContent className="p-6">
-							<div className="flex items-center">
-								<Music className="h-8 w-8 text-blue-600" />
-								<div className="ml-4">
-									<p className="text-2xl font-bold text-gray-900">
-										{tracks.length}
-									</p>
-									<p className="text-sm text-gray-600">
-										Tracks
-									</p>
+					{/* Next Up */}
+					<Card className="border-yellow-500 bg-yellow-50">
+						<CardHeader className="pb-3">
+							<CardTitle className="text-lg text-yellow-700 flex items-center gap-2">
+								<div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
+								Next Up
+							</CardTitle>
+						</CardHeader>
+						<CardContent>
+							{showOrderItems.length > 1 &&
+							showOrderItems[1]?.type === "artist" ? (
+								<div className="flex items-center gap-4">
+									<Avatar className="h-12 w-12">
+										<AvatarFallback>
+											{showOrderItems[1]
+												.artist!.artistName.charAt(0)
+												.toUpperCase()}
+										</AvatarFallback>
+									</Avatar>
+									<div>
+										<h3 className="font-semibold text-lg">
+											{
+												showOrderItems[1].artist!
+													.artistName
+											}
+										</h3>
+										<div className="flex items-center gap-2 text-sm text-muted-foreground">
+											<Badge variant="outline">
+												{
+													showOrderItems[1].artist!
+														.style
+												}
+											</Badge>
+											<span className="flex items-center gap-1">
+												<Clock className="h-3 w-3" />
+												{
+													showOrderItems[1].artist!
+														.performanceDuration
+												}{" "}
+												min
+											</span>
+										</div>
+									</div>
 								</div>
-							</div>
+							) : (
+								<div className="text-center text-muted-foreground">
+									<Music className="h-8 w-8 mx-auto mb-2 opacity-50" />
+									<p>No next performance scheduled</p>
+								</div>
+							)}
 						</CardContent>
 					</Card>
 
-					<Card>
-						<CardContent className="p-6">
-							<div className="flex items-center">
-								<Volume2 className="h-8 w-8 text-purple-600" />
-								<div className="ml-4">
-									<p className="text-2xl font-bold text-gray-900">
-										85%
-									</p>
-									<p className="text-sm text-gray-600">
-										Volume
-									</p>
-								</div>
-							</div>
-						</CardContent>
-					</Card>
-
-					<Card>
-						<CardContent className="p-6">
-							<div className="flex items-center">
-								<Play className="h-8 w-8 text-pink-600" />
-								<div className="ml-4">
-									<p className="text-2xl font-bold text-gray-900">
-										{currentTrack ? "PLAYING" : "STOPPED"}
-									</p>
-									<p className="text-sm text-gray-600">
-										Playback
-									</p>
-								</div>
+					{/* Audio Controls */}
+					<Card className="border-purple-500 bg-purple-50">
+						<CardHeader className="pb-3">
+							<CardTitle className="text-lg text-purple-700 flex items-center gap-2">
+								<Volume2 className="h-5 w-5" />
+								Audio Controls
+							</CardTitle>
+						</CardHeader>
+						<CardContent>
+							<div className="flex items-center justify-center gap-2">
+								<Button variant="outline" size="sm">
+									<SkipForward className="h-4 w-4" />
+								</Button>
+								<Button variant="outline" size="sm">
+									{currentlyPlaying ? (
+										<Pause className="h-4 w-4" />
+									) : (
+										<Play className="h-4 w-4" />
+									)}
+								</Button>
+								<Button variant="outline" size="sm">
+									<Headphones className="h-4 w-4" />
+								</Button>
 							</div>
 						</CardContent>
 					</Card>
 				</div>
 
-				{/* Music Library */}
+				{/* Performance Order & Tracks Table */}
 				<Card>
 					<CardHeader>
-						<CardTitle className="flex items-center">
-							<Music className="h-5 w-5 mr-2 text-purple-600" />
-							Music Library
+						<CardTitle className="flex items-center gap-2">
+							<Music className="h-5 w-5" />
+							Performance Order & Music Tracks
 						</CardTitle>
-						<CardDescription>
-							Manage music tracks for the event
-						</CardDescription>
 					</CardHeader>
 					<CardContent>
-						{tracks.length > 0 ? (
-							<div className="space-y-4">
-								{tracks.map((track) => (
-									<div
-										key={track.id}
-										className={`flex items-center p-4 rounded-lg border transition-all ${
-											currentTrack === track.id
-												? "bg-purple-50 border-purple-200"
-												: "bg-gray-50 border-gray-200"
-										}`}
-									>
-										<Button
-											size="sm"
-											variant={
-												currentTrack === track.id
-													? "default"
-													: "outline"
-											}
-											onClick={() => togglePlay(track.id)}
-											className="mr-4"
-										>
-											{currentTrack === track.id ? (
-												<Pause className="h-4 w-4" />
-											) : (
-												<Play className="h-4 w-4" />
-											)}
-										</Button>
-
-										<div className="flex-1">
-											<h3 className="font-semibold text-gray-900">
-												{track.name}
-											</h3>
-											<p className="text-sm text-gray-600">
-												by {track.artist} •{" "}
-												{track.duration}
-											</p>
-										</div>
-
-										<div className="flex items-center space-x-4">
-											<Badge
-												className={getGenreColor(
-													track.genre
-												)}
-											>
-												{track.genre}
-											</Badge>
-											{track.bpm && (
-												<span className="text-sm text-gray-600">
-													{track.bpm} BPM
-												</span>
-											)}
-										</div>
-									</div>
-								))}
+						{showOrderItems.length === 0 ? (
+							<div className="text-center py-8">
+								<Music className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+								<p className="text-gray-500">
+									No performances scheduled for this date
+								</p>
 							</div>
 						) : (
-							<div className="text-center py-12">
-								<Music className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-								<h3 className="text-lg font-semibold text-gray-900 mb-2">
-									No Music Tracks
-								</h3>
-								<p className="text-gray-600 mb-4">
-									Upload music tracks to get started with DJ
-									management.
-								</p>
-								<Button className="bg-purple-600 hover:bg-purple-700">
-									<Upload className="h-4 w-4 mr-2" />
-									Upload Your First Track
-								</Button>
-							</div>
+							<Table>
+								<TableHeader>
+									<TableRow>
+										<TableHead className="w-16">
+											#
+										</TableHead>
+										<TableHead>Artist</TableHead>
+										<TableHead>Style</TableHead>
+										<TableHead>Duration</TableHead>
+										<TableHead>Status</TableHead>
+										<TableHead>Track Controls</TableHead>
+										<TableHead>Backing Track</TableHead>
+									</TableRow>
+								</TableHeader>
+								<TableBody>
+									{showOrderItems.map((item, index) => {
+										const status = getItemStatus(
+											item,
+											index
+										);
+										return (
+											<TableRow
+												key={item.id}
+												className={`${getRowColorClasses(
+													status
+												)} border-l-4`}
+											>
+												<TableCell className="font-medium">
+													{item.performanceOrder}
+												</TableCell>
+												<TableCell>
+													{item.type === "artist" &&
+													item.artist ? (
+														<div className="flex items-center gap-3">
+															<Avatar className="h-8 w-8">
+																<AvatarFallback>
+																	{item.artist.artistName
+																		.charAt(
+																			0
+																		)
+																		.toUpperCase()}
+																</AvatarFallback>
+															</Avatar>
+															<div>
+																<p className="font-medium">
+																	{
+																		item
+																			.artist
+																			.artistName
+																	}
+																</p>
+																{item.artist
+																	.realName && (
+																	<p className="text-xs text-muted-foreground">
+																		{
+																			item
+																				.artist
+																				.realName
+																		}
+																	</p>
+																)}
+															</div>
+														</div>
+													) : (
+														<span>Unknown</span>
+													)}
+												</TableCell>
+												<TableCell>
+													{item.type === "artist" &&
+													item.artist ? (
+														<Badge variant="outline">
+															{item.artist.style}
+														</Badge>
+													) : (
+														"-"
+													)}
+												</TableCell>
+												<TableCell>
+													{item.type === "artist" &&
+													item.artist ? (
+														<span className="flex items-center gap-1">
+															<Clock className="h-3 w-3" />
+															{
+																item.artist
+																	.performanceDuration
+															}{" "}
+															min
+														</span>
+													) : (
+														"-"
+													)}
+												</TableCell>
+												<TableCell>
+													{getStatusBadge(status)}
+												</TableCell>
+												<TableCell>
+													{item.type === "artist" &&
+													item.artist ? (
+														<div className="flex items-center gap-2">
+															<Button
+																variant="outline"
+																size="sm"
+																onClick={() =>
+																	handlePlayTrack(
+																		item.artist!
+																			.id
+																	)
+																}
+															>
+																{currentlyPlaying ===
+																item.artist
+																	.id ? (
+																	<Pause className="h-3 w-3" />
+																) : (
+																	<Play className="h-3 w-3" />
+																)}
+															</Button>
+															<Button
+																variant="outline"
+																size="sm"
+															>
+																<Headphones className="h-3 w-3" />
+															</Button>
+														</div>
+													) : (
+														"-"
+													)}
+												</TableCell>
+												<TableCell>
+													{item.type === "artist" &&
+													item.artist
+														?.backingTrack ? (
+														<div className="flex items-center gap-2">
+															<span className="text-xs text-green-600">
+																Available
+															</span>
+															<Button
+																variant="outline"
+																size="sm"
+															>
+																<Volume2 className="h-3 w-3" />
+															</Button>
+														</div>
+													) : (
+														<span className="text-xs text-gray-400">
+															No backing track
+														</span>
+													)}
+												</TableCell>
+											</TableRow>
+										);
+									})}
+								</TableBody>
+							</Table>
 						)}
 					</CardContent>
 				</Card>
-
-				{/* DJ Controls */}
-				{tracks.length > 0 && (
-					<Card className="mt-8">
-						<CardHeader>
-							<CardTitle>DJ Controls</CardTitle>
-							<CardDescription>
-								Live mixing and playback controls
-							</CardDescription>
-						</CardHeader>
-						<CardContent>
-							<div className="flex items-center justify-center space-x-6 py-8">
-								<Button size="lg" variant="outline">
-									<Volume2 className="h-5 w-5 mr-2" />
-									Volume
-								</Button>
-								<Button
-									size="lg"
-									className="bg-green-600 hover:bg-green-700"
-								>
-									<Play className="h-5 w-5 mr-2" />
-									Play
-								</Button>
-								<Button size="lg" variant="outline">
-									<Pause className="h-5 w-5 mr-2" />
-									Pause
-								</Button>
-								<Button size="lg" variant="outline">
-									<Headphones className="h-5 w-5 mr-2" />
-									Cue
-								</Button>
-							</div>
-						</CardContent>
-					</Card>
-				)}
 			</div>
 		</div>
 	);

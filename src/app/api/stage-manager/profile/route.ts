@@ -1,70 +1,132 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSessionData } from "@/lib/session";
+import { withAuth } from "@/lib/route-protection";
 import { getUserById } from "@/lib/data-access";
 import { APIResponse } from "@/types";
 
-export async function GET(request: NextRequest) {
+// Get stage manager profile using the data access layer
+export const GET = async (request: NextRequest) => {
 	try {
-		// Check authentication and authorization
-		const sessionData = await getSessionData(request);
-		if (
-			!sessionData ||
-			!["super_admin", "stage_manager"].includes(sessionData.role)
-		) {
+		console.log("Profile API called - checking session...");
+
+		// Manual session check for debugging
+		const sessionData = await import("@/lib/session").then((m) =>
+			m.getSessionFromRequest(request)
+		);
+		console.log("Session data:", sessionData);
+
+		if (!sessionData) {
+			console.log("No session found");
 			return NextResponse.json<APIResponse>(
 				{
 					success: false,
 					error: {
 						code: "UNAUTHORIZED",
-						message: "Stage manager access required",
+						message: "No session found - please log in",
+					},
+				},
+				{ status: 401 }
+			);
+		}
+
+		// Now call the original withAuth wrapper
+		return await withAuthWrapper(request, sessionData);
+	} catch (error) {
+		console.error("Profile API outer error:", error);
+		return NextResponse.json<APIResponse>(
+			{
+				success: false,
+				error: {
+					code: "INTERNAL_ERROR",
+					message: "Session check failed",
+				},
+			},
+			{ status: 500 }
+		);
+	}
+};
+
+const withAuthWrapper = async (request: NextRequest, session: any) => {
+	try {
+		console.log("Profile API called with session:", {
+			userId: session.userId,
+			role: session.role,
+			status: session.status,
+		});
+
+		// Check if user is a stage manager
+		if (session.role !== "stage_manager") {
+			console.log("Access denied - not a stage manager:", session.role);
+			return NextResponse.json<APIResponse>(
+				{
+					success: false,
+					error: {
+						code: "FORBIDDEN",
+						message: "Access denied. Stage manager role required.",
 					},
 				},
 				{ status: 403 }
 			);
 		}
 
-		// Get user data
-		const user = await getUserById(sessionData.userId);
+		console.log("Fetching user data for userId:", session.userId);
+
+		// Get user data using the data access layer
+		const user = await getUserById(session.userId);
+
+		console.log("User data retrieved:", user ? "Found" : "Not found");
+
 		if (!user) {
+			console.log("User not found in database");
 			return NextResponse.json<APIResponse>(
 				{
 					success: false,
 					error: {
 						code: "USER_NOT_FOUND",
-						message: "User not found",
+						message: "Stage manager not found",
 					},
 				},
 				{ status: 404 }
 			);
 		}
 
-		const profileData = {
-			user: {
-				id: user.id,
-				email: user.email,
-				role: user.role,
-				status: user.status,
-				profile: user.profile,
-				createdAt: user.createdAt,
-				lastLogin: user.lastLogin,
+		// Return user profile without sensitive data
+		const userProfile = {
+			id: user.id,
+			email: user.email,
+			role: user.role,
+			status: user.status,
+			profile: {
+				firstName: user.profile?.firstName || "",
+				lastName: user.profile?.lastName || "",
+				phone: user.profile?.phone || "",
 			},
+			createdAt: user.createdAt,
+			lastLogin: user.lastLogin,
 		};
+
+		console.log("Returning user profile successfully");
 
 		return NextResponse.json<APIResponse>({
 			success: true,
-			data: profileData,
+			data: {
+				user: userProfile,
+			},
 		});
 	} catch (error) {
-		console.error("Error fetching profile:", error);
+		console.error("Get stage manager profile error:", error);
+		console.error(
+			"Error stack:",
+			error instanceof Error ? error.stack : "No stack trace"
+		);
 		return NextResponse.json<APIResponse>(
 			{
 				success: false,
 				error: {
 					code: "INTERNAL_ERROR",
-					message: "Failed to fetch profile",
+					message: "An internal error occurred",
 				},
 			},
 			{ status: 500 }
 		);
 	}
-}
+};

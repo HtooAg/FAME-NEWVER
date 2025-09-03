@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { withAuth } from "@/lib/route-protection";
-import { uploadFileWithMetadata, createFilePath } from "@/lib/gcs";
+import { uploadFile, createFilePath } from "@/lib/gcs";
 import { writeJsonFile, readJsonFile } from "@/lib/gcs";
 import { APIResponse, MediaFile } from "@/types";
 
@@ -47,18 +47,22 @@ export const POST = withAuth(async (request: NextRequest, session) => {
 		uploadPath = createFilePath("user", session.userId, category);
 
 		// Upload file to GCS
-		const uploadedFile = await uploadFileWithMetadata(
-			buffer,
-			file.name,
-			file.type,
-			uploadPath,
-			session.userId,
-			{
-				category,
-				eventId: eventId || undefined,
-				userRole: session.role,
-			}
-		);
+		const fileName = `${uploadPath}/${file.name}`;
+		const url = await uploadFile(fileName, buffer, file.type);
+
+		const uploadedFile: MediaFile = {
+			id:
+				Math.random().toString(36).substring(2) +
+				Date.now().toString(36),
+			filename: fileName,
+			originalName: file.name,
+			mimeType: file.type,
+			size: buffer.length,
+			url: url,
+			uploadedBy: session.userId,
+			uploadedAt: new Date(),
+			category: category as "image" | "audio" | "video" | "document",
+		};
 
 		// Create MediaFile record
 		const mediaFile: MediaFile = {

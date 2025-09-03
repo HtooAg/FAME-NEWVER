@@ -47,21 +47,31 @@ export default function HomePage() {
 				</div>
 
 				<h1
-					className={`text-5xl sm:text-6xl md:text-7xl font-bold mb-6 gradient-text-purple-pink ${
+					className={`text-5xl sm:text-6xl md:text-7xl font-bold mb-6 text-purple-300 drop-shadow-lg ${
 						mounted
 							? "animate-fade-in-up animate-stagger-1"
 							: "opacity-0"
 					}`}
+					style={{
+						color: "#d8b4fe !important",
+						textShadow:
+							"0 0 30px rgba(168, 85, 247, 0.8), 0 0 60px rgba(236, 72, 153, 0.5), 0 4px 20px rgba(0, 0, 0, 0.3)",
+					}}
 				>
 					Welcome to FAME
 				</h1>
 
 				<p
-					className={`text-xl sm:text-2xl md:text-3xl mb-12 max-w-4xl px-4 text-gray-300 leading-relaxed ${
+					className={`text-xl sm:text-2xl md:text-3xl mb-12 max-w-4xl px-4 font-medium leading-relaxed ${
 						mounted
 							? "animate-fade-in-up animate-stagger-2"
 							: "opacity-0"
 					}`}
+					style={{
+						color: "#a5b4fc !important",
+						textShadow:
+							"0 2px 10px rgba(0, 0, 0, 0.7), 0 0 20px rgba(165, 180, 252, 0.6), 0 0 40px rgba(165, 180, 252, 0.3)",
+					}}
 				>
 					Your Ultimate Event Management Platform for Stage Managers
 				</p>
@@ -84,7 +94,12 @@ export default function HomePage() {
 					<Button
 						size="lg"
 						variant="outline"
-						className="bg-transparent border-2 border-purple-600 text-purple-400 hover:bg-purple-600 hover:text-white text-xl px-10 py-6 rounded-full shadow-2xl font-semibold tracking-wide hover-lift transition-all duration-300"
+						className="bg-transparent border-2 border-purple-400 text-purple-300 hover:bg-purple-600 hover:text-white text-xl px-10 py-6 rounded-full shadow-2xl font-semibold tracking-wide hover-lift transition-all duration-300"
+						style={{
+							textShadow: "0 0 15px rgba(196, 181, 253, 0.6)",
+							boxShadow:
+								"0 0 20px rgba(168, 85, 247, 0.3), 0 8px 32px rgba(0, 0, 0, 0.3)",
+						}}
 						onClick={() => router.push("/register")}
 					>
 						Join as Stage Manager
@@ -98,13 +113,25 @@ export default function HomePage() {
 							: "opacity-0"
 					}`}
 				>
-					<p className="text-gray-400 text-lg mb-4">
+					<p
+						className="text-lg mb-4 font-medium"
+						style={{
+							color: "#67e8f9 !important",
+							textShadow:
+								"0 2px 8px rgba(0, 0, 0, 0.8), 0 0 15px rgba(103, 232, 249, 0.6), 0 0 30px rgba(103, 232, 249, 0.3)",
+						}}
+					>
 						Already have an account?
 					</p>
 					<div className="flex flex-col gap-4 items-center">
 						<button
 							onClick={() => router.push("/login")}
-							className="text-purple-400 hover:text-purple-300 text-xl font-semibold underline decoration-2 underline-offset-4 transition-all duration-300 hover-glow"
+							className="text-xl font-semibold underline decoration-2 underline-offset-4 transition-all duration-300 hover-glow"
+							style={{
+								color: "#fde047 !important",
+								textShadow:
+									"0 0 15px rgba(253, 224, 71, 0.8), 0 0 30px rgba(253, 224, 71, 0.5), 0 0 45px rgba(253, 224, 71, 0.3)",
+							}}
 						>
 							Sign in
 						</button>
@@ -123,7 +150,12 @@ export default function HomePage() {
 									console.error("Logout error:", error);
 								}
 							}}
-							className="text-red-400 hover:text-red-300 text-sm underline"
+							className="text-sm underline font-medium"
+							style={{
+								color: "#fdba74 !important",
+								textShadow:
+									"0 0 10px rgba(253, 186, 116, 0.8), 0 0 20px rgba(253, 186, 116, 0.5), 0 0 30px rgba(253, 186, 116, 0.3)",
+							}}
 						>
 							Clear Session (Debug)
 						</button>

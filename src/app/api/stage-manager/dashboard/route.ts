@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionFromRequest } from "@/lib/session";
 import { APIResponse } from "@/types";
-import { getEventsForStageManager, getUserByEmail } from "@/lib/gcs";
+import { getUser } from "@/lib/gcs";
 
 export async function GET(request: NextRequest) {
 	try {
@@ -20,10 +20,7 @@ export async function GET(request: NextRequest) {
 			);
 		}
 
-		if (
-			session.role !== "stage_manager" &&
-			session.role !== "super_admin"
-		) {
+		if (session.role !== "stage_manager") {
 			return NextResponse.json<APIResponse>(
 				{
 					success: false,
@@ -36,69 +33,44 @@ export async function GET(request: NextRequest) {
 			);
 		}
 
-		// Get the actual stage manager user data
-		const stageManager = await getUserByEmail(session.email);
+		// Fetch user details from GCS
+		const user = await getUser(session.userId);
 
-		if (!stageManager) {
+		if (!user) {
 			return NextResponse.json<APIResponse>(
 				{
 					success: false,
 					error: {
 						code: "USER_NOT_FOUND",
-						message: "Stage manager profile not found",
+						message: "User not found",
 					},
 				},
 				{ status: 404 }
 			);
 		}
 
-		// Get events for this stage manager (filtered by their ID)
-		const events = await getEventsForStageManager(session.userId);
-
-		// Calculate stats
-		const stats = {
-			totalEvents: events.length,
-			activeEvents: events.filter(
-				(e) =>
-					e.status === "active" ||
-					e.status === "registration_open" ||
-					e.status === "live"
-			).length,
-			totalArtists: events.reduce(
-				(sum, event) => sum + (event.artists?.length || 0),
-				0
-			),
+		const dashboardData = {
+			user: {
+				id: user.id,
+				email: user.email,
+				role: user.role,
+				status: user.status,
+				profile: {
+					firstName: user.profile?.firstName || "",
+					lastName: user.profile?.lastName || "",
+					phone: user.profile?.phone || "",
+				},
+				createdAt: user.createdAt,
+				lastLogin: user.lastLogin,
+			},
 		};
 
 		return NextResponse.json<APIResponse>({
 			success: true,
-			data: {
-				user: {
-					id: stageManager.id,
-					email: stageManager.email,
-					role: stageManager.role,
-					status: stageManager.status,
-					profile: {
-						firstName: stageManager.profile?.firstName || "Stage",
-						lastName: stageManager.profile?.lastName || "Manager",
-						phone: stageManager.profile?.phone || "",
-					},
-				},
-				stats,
-				events: events.map((event) => ({
-					id: event.id,
-					name: event.name,
-					venueName: event.venue,
-					status: event.status,
-					startDate: event.date,
-					endDate: event.date,
-					description: event.description || `Event at ${event.venue}`,
-					stageManagerId: event.stageManagerId,
-				})),
-			},
+			data: dashboardData,
 		});
 	} catch (error) {
-		console.error("Dashboard API error:", error);
+		console.error("Stage manager dashboard API error:", error);
 		return NextResponse.json<APIResponse>(
 			{
 				success: false,

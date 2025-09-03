@@ -6,13 +6,17 @@ import {
 	deleteFile,
 	getSignedUrl,
 } from "@/lib/gcs";
-import { APIResponse, MediaFile } from "@/types";
+import { APIResponse, MediaFile, SessionData } from "@/types";
 
 // Get file information
 export const GET = withAuth(
-	async (request: NextRequest, session, { params }) => {
+	async (
+		request: NextRequest,
+		session: SessionData,
+		context?: { params: Record<string, string> }
+	) => {
 		try {
-			const { fileId } = params;
+			const fileId = context?.params?.fileId;
 
 			if (!fileId) {
 				return NextResponse.json<APIResponse>(
@@ -92,9 +96,13 @@ export const GET = withAuth(
 
 // Delete file
 export const DELETE = withAuth(
-	async (request: NextRequest, session, { params }) => {
+	async (
+		request: NextRequest,
+		session: SessionData,
+		context?: { params: Record<string, string> }
+	) => {
 		try {
-			const { fileId } = params;
+			const fileId = context?.params?.fileId;
 
 			if (!fileId) {
 				return NextResponse.json<APIResponse>(

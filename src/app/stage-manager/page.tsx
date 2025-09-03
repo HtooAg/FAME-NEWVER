@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
 import {
 	Card,
 	CardContent,
@@ -9,7 +9,6 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
 	Calendar,
@@ -19,55 +18,44 @@ import {
 	MapPin,
 	ExternalLink,
 } from "lucide-react";
-import { FameLogo } from "@/components/ui/fame-logo";
-import { User } from "@/types";
+import Image from "next/image";
 import Link from "next/link";
+import { Event } from "@/lib/types/event";
+import { motion } from "framer-motion";
 
-interface StageManagerData {
-	user: User;
-	stats: {
-		totalEvents: number;
-		activeEvents: number;
-		totalArtists: number;
-	};
-	events: Array<{
-		id: string;
-		name: string;
-		venueName: string;
-		status: string;
-		startDate: string;
-		endDate: string;
-		description: string;
-	}>;
-}
-
-export default function StageManagerPage() {
-	const router = useRouter();
-	const [data, setData] = useState<StageManagerData | null>(null);
+export default function StageManagerDashboard() {
+	const [user, setUser] = useState<any>(null);
+	const [events, setEvents] = useState<Event[]>([]);
 	const [loading, setLoading] = useState(true);
 
 	useEffect(() => {
-		fetchData();
+		fetchDashboardData();
 	}, []);
 
-	const fetchData = async () => {
+	const fetchDashboardData = async () => {
 		try {
-			const response = await fetch("/api/stage-manager/dashboard");
-			if (response.ok) {
-				const result = await response.json();
-				if (result.success) {
-					setData(result.data);
-				} else {
-					console.error(
-						"Failed to fetch dashboard data:",
-						result.error
-					);
-				}
-			} else if (response.status === 403) {
-				// Redirect to login if unauthorized
-				router.push("/login");
+			setLoading(true);
+
+			// Fetch user data
+			const userResponse = await fetch("/api/stage-manager/profile");
+			if (userResponse.ok) {
+				const userResult = await userResponse.json();
+				console.log("User data:", userResult.data?.user); // Debug log
+				setUser(userResult.data?.user);
 			} else {
-				console.error("Failed to fetch dashboard data");
+				console.error(
+					"Failed to fetch user data:",
+					userResponse.status
+				);
+			}
+
+			// Fetch events
+			const eventsResponse = await fetch("/api/events");
+			if (eventsResponse.ok) {
+				const eventsResult = await eventsResponse.json();
+				setEvents(eventsResult.data || []);
+			} else {
+				console.error("Failed to fetch events:", eventsResponse.status);
 			}
 		} catch (error) {
 			console.error("Error fetching dashboard data:", error);
@@ -76,22 +64,21 @@ export default function StageManagerPage() {
 		}
 	};
 
-	const handleLogout = async () => {
-		try {
-			await fetch("/api/auth/logout", { method: "POST" });
-			router.push("/login");
-		} catch (error) {
-			console.error("Logout error:", error);
-			router.push("/login");
-		}
+	const requestEvents = () => {
+		fetchDashboardData();
 	};
 
-	const formatDate = (dateString: string) => {
-		return new Date(dateString).toLocaleDateString("en-US", {
-			year: "numeric",
-			month: "short",
-			day: "numeric",
-		});
+	const formatDate = (dateString: string | undefined) => {
+		if (!dateString) return "No date";
+		try {
+			return new Date(dateString).toLocaleDateString("en-US", {
+				year: "numeric",
+				month: "short",
+				day: "numeric",
+			});
+		} catch (error) {
+			return "Invalid date";
+		}
 	};
 
 	const getStatusColor = (status: string) => {
@@ -126,22 +113,22 @@ export default function StageManagerPage() {
 				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 					<div className="flex justify-between items-center h-16">
 						<div className="flex items-center">
-							<FameLogo width={40} height={40} className="mr-3" />
+							<Image
+								src="/fame-logo.png"
+								alt="FAME Logo"
+								width={40}
+								height={40}
+								className="mr-3"
+							/>
 							<div>
 								<h1 className="text-xl font-semibold text-gray-900">
 									Stage Manager Dashboard
 								</h1>
 								<p className="text-sm text-gray-500">
-									{data?.user?.profile?.firstName}{" "}
-									{data?.user?.profile?.lastName} •{" "}
-									{data?.user?.email}
-									{data?.events &&
-										data.events.length > 0 &&
-										` • Managing ${
-											data.events.length
-										} event${
-											data.events.length !== 1 ? "s" : ""
-										}`}
+									{user?.profile?.firstName &&
+									user?.profile?.lastName
+										? `${user.profile.firstName} ${user.profile.lastName} • ${user.email}`
+										: user?.email || "Stage Manager"}
 								</p>
 							</div>
 						</div>
@@ -149,9 +136,10 @@ export default function StageManagerPage() {
 							<Button
 								variant="outline"
 								size="sm"
-								onClick={() => window.location.reload()}
+								onClick={requestEvents}
+								disabled={loading}
 							>
-								Refresh Events
+								{loading ? "Loading..." : "Refresh Events"}
 							</Button>
 							<Link href="/stage-manager/profile">
 								<Button variant="outline" size="sm">
@@ -159,7 +147,24 @@ export default function StageManagerPage() {
 									Profile
 								</Button>
 							</Link>
-							<Button variant="outline" onClick={handleLogout}>
+							<Button
+								variant="outline"
+								onClick={async () => {
+									try {
+										const response = await fetch(
+											"/api/auth/logout",
+											{
+												method: "POST",
+											}
+										);
+										if (response.ok) {
+											window.location.href = "/login";
+										}
+									} catch (error) {
+										console.error("Logout error:", error);
+									}
+								}}
+							>
 								<LogOut className="h-4 w-4 mr-2" />
 								Logout
 							</Button>
@@ -170,85 +175,33 @@ export default function StageManagerPage() {
 
 			<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 				{/* Welcome Section */}
-				<div className="mb-8">
+				<motion.div
+					className="mb-8"
+					initial={{ opacity: 0, y: 20 }}
+					animate={{ opacity: 1, y: 0 }}
+					transition={{ duration: 0.6 }}
+				>
 					<div className="text-center">
 						<h2 className="text-3xl font-bold text-gray-900 mb-2">
-							Welcome, {data?.user?.profile?.firstName}{" "}
-							{data?.user?.profile?.lastName}!
+							Welcome,{" "}
+							{user?.profile?.firstName && user?.profile?.lastName
+								? `${user.profile.firstName} ${user.profile.lastName}`
+								: user?.email?.split("@")[0] || "Stage Manager"}
+							!
 						</h2>
-						<p className="text-lg text-gray-600 mb-2">
+						<p className="text-lg text-gray-600">
 							Manage your events and create amazing experiences
 						</p>
-						<div className="flex justify-center items-center space-x-4 text-sm text-gray-500">
-							<span>Stage Manager ID: {data?.user?.id}</span>
-							<span>•</span>
-							<span>
-								Status:{" "}
-								<span className="capitalize font-medium text-green-600">
-									{data?.user?.status}
-								</span>
-							</span>
-						</div>
 					</div>
-				</div>
-
-				{/* Statistics Cards */}
-				<div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-					<Card className="bg-white border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-						<CardContent className="p-6">
-							<div className="flex items-center">
-								<Calendar className="h-8 w-8 text-purple-600" />
-								<div className="ml-4">
-									<p className="text-sm font-medium text-gray-500">
-										Total Events
-									</p>
-									<p className="text-2xl font-bold text-gray-900">
-										{data?.stats?.totalEvents || 0}
-									</p>
-								</div>
-							</div>
-						</CardContent>
-					</Card>
-					<Card className="bg-white border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-						<CardContent className="p-6">
-							<div className="flex items-center">
-								<div className="h-8 w-8 bg-green-100 rounded-full flex items-center justify-center">
-									<div className="h-4 w-4 bg-green-600 rounded-full"></div>
-								</div>
-								<div className="ml-4">
-									<p className="text-sm font-medium text-gray-500">
-										Active Events
-									</p>
-									<p className="text-2xl font-bold text-gray-900">
-										{data?.stats?.activeEvents || 0}
-									</p>
-								</div>
-							</div>
-						</CardContent>
-					</Card>
-					<Card className="bg-white border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-						<CardContent className="p-6">
-							<div className="flex items-center">
-								<div className="h-8 w-8 bg-blue-100 rounded-full flex items-center justify-center">
-									<span className="text-blue-600 font-bold text-sm">
-										A
-									</span>
-								</div>
-								<div className="ml-4">
-									<p className="text-sm font-medium text-gray-500">
-										Total Artists
-									</p>
-									<p className="text-2xl font-bold text-gray-900">
-										{data?.stats?.totalArtists || 0}
-									</p>
-								</div>
-							</div>
-						</CardContent>
-					</Card>
-				</div>
+				</motion.div>
 
 				{/* My Events Section */}
-				<div className="mb-8">
+				<motion.div
+					className="mb-8"
+					initial={{ opacity: 0, y: 20 }}
+					animate={{ opacity: 1, y: 0 }}
+					transition={{ duration: 0.6, delay: 0.2 }}
+				>
 					<Card className="bg-gradient-to-r from-purple-600 to-pink-600 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-300">
 						<CardHeader>
 							<CardTitle className="text-2xl font-bold flex items-center">
@@ -257,7 +210,6 @@ export default function StageManagerPage() {
 							</CardTitle>
 							<CardDescription className="text-purple-100">
 								Manage your assigned events and create new ones
-								(Filtered by your Stage Manager ID)
 							</CardDescription>
 						</CardHeader>
 						<CardContent>
@@ -271,150 +223,135 @@ export default function StageManagerPage() {
 							</Link>
 						</CardContent>
 					</Card>
-				</div>
+				</motion.div>
 
-				{/* Stage Manager Info Card */}
-				<div className="mb-8">
-					<Card className="bg-white border border-gray-200 shadow-sm">
-						<CardHeader>
-							<CardTitle className="text-lg font-semibold text-gray-900">
-								Stage Manager Profile
-							</CardTitle>
-						</CardHeader>
-						<CardContent>
-							<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-								<div>
-									<p className="text-sm font-medium text-gray-500">
-										Full Name
-									</p>
-									<p className="text-lg font-semibold text-gray-900">
-										{data?.user?.profile?.firstName}{" "}
-										{data?.user?.profile?.lastName}
-									</p>
-								</div>
-								<div>
-									<p className="text-sm font-medium text-gray-500">
-										Email
-									</p>
-									<p className="text-lg text-gray-900">
-										{data?.user?.email}
-									</p>
-								</div>
-								<div>
-									<p className="text-sm font-medium text-gray-500">
-										Manager ID
-									</p>
-									<p className="text-lg font-mono text-gray-900">
-										{data?.user?.id}
-									</p>
-								</div>
-							</div>
-						</CardContent>
-					</Card>
-				</div>
-
-				{/* Events List */}
-				{data?.events && data.events.length > 0 ? (
-					<div>
-						<div className="flex justify-between items-center mb-4">
-							<h3 className="text-xl font-semibold text-gray-900">
-								Your Events ({data.events.length})
+				{/* Loading State for Events */}
+				{loading && events.length === 0 && (
+					<motion.div
+						className="text-center py-16"
+						initial={{ opacity: 0, y: 20 }}
+						animate={{ opacity: 1, y: 0 }}
+						transition={{ duration: 0.6, delay: 0.4 }}
+					>
+						<div className="bg-white rounded-lg shadow-sm p-12 max-w-md mx-auto">
+							<div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
+							<h3 className="text-xl font-bold text-gray-900 mb-4">
+								Loading Events...
 							</h3>
-							<p className="text-sm text-gray-500">
-								Filtered by Stage Manager ID: {data?.user?.id}
+							<p className="text-gray-600">
+								Please wait while we fetch your events.
 							</p>
 						</div>
+					</motion.div>
+				)}
+
+				{/* Events List */}
+				{!loading && events.length > 0 && (
+					<motion.div
+						initial={{ opacity: 0, y: 20 }}
+						animate={{ opacity: 1, y: 0 }}
+						transition={{ duration: 0.6, delay: 0.4 }}
+					>
+						<h3 className="text-xl font-semibold text-gray-900 mb-4">
+							Your Events ({events.length})
+						</h3>
 						<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-							{data.events.map((event, index) => (
-								<Card
+							{events.map((event, index) => (
+								<motion.div
 									key={event.id}
-									className="hover:shadow-lg transition-all duration-300 hover:scale-105"
+									initial={{ opacity: 0, y: 20 }}
+									animate={{ opacity: 1, y: 0 }}
+									transition={{
+										duration: 0.6,
+										delay: 0.1 * index,
+									}}
 								>
-									<CardHeader>
-										<div className="flex justify-between items-start">
-											<div className="flex-1">
-												<CardTitle className="text-lg font-bold text-gray-900 mb-2">
-													{event.name}
-												</CardTitle>
-												<CardDescription className="text-gray-600 flex items-center">
-													<MapPin className="h-4 w-4 mr-1" />
-													{event.venueName}
-												</CardDescription>
-											</div>
-											<Badge
-												className={getStatusColor(
-													event.status
-												)}
-											>
-												{event.status
-													.charAt(0)
-													.toUpperCase() +
-													event.status.slice(1)}
-											</Badge>
-										</div>
-									</CardHeader>
-									<CardContent>
-										<div className="space-y-3">
-											<div className="flex items-center text-sm text-gray-600">
-												<Calendar className="h-4 w-4 mr-2" />
-												{formatDate(event.startDate)} -{" "}
-												{formatDate(event.endDate)}
-											</div>
-
-											<p className="text-sm text-gray-700 line-clamp-2">
-												{event.description}
-											</p>
-
-											<div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
-												<span className="font-medium">
-													Stage Manager:
-												</span>{" "}
-												{data?.user?.profile?.firstName}{" "}
-												{data?.user?.profile?.lastName}
-												{(event as any)
-													.stageManagerId && (
-													<span className="ml-2">
-														• ID:{" "}
-														{
-															(event as any)
-																.stageManagerId
-														}
-													</span>
-												)}
-											</div>
-
-											<div className="space-y-4">
-												<div className="p-2 bg-gray-100 rounded-md text-sm break-all">
-													{(() => {
-														const origin =
-															typeof window !==
-															"undefined"
-																? window
-																		.location
-																		.origin
-																: process.env
-																		.NEXT_PUBLIC_BASE_URL ||
-																  "http://localhost:3000";
-														return `${origin}/artist-register/${event.id}`;
-													})()}
+									<Card className="hover:shadow-lg transition-all duration-300 hover:scale-105">
+										<CardHeader>
+											<div className="flex justify-between items-start">
+												<div className="flex-1">
+													<CardTitle className="text-lg font-bold text-gray-900 mb-2">
+														{event.name ||
+															"Untitled Event"}
+													</CardTitle>
+													<CardDescription className="text-gray-600 flex items-center">
+														<MapPin className="h-4 w-4 mr-1" />
+														{event.venueName ||
+															"No venue"}
+													</CardDescription>
 												</div>
-												<Link
-													href={`/stage-manager/events/${event.id}/artists`}
+												<Badge
+													className={getStatusColor(
+														event.status || "draft"
+													)}
 												>
-													<Button className="w-full bg-purple-600 hover:bg-purple-700">
-														<ExternalLink className="h-4 w-4 mr-2" />
-														Manage Artists
-													</Button>
-												</Link>
+													{(event.status || "draft")
+														.charAt(0)
+														.toUpperCase() +
+														(
+															event.status ||
+															"draft"
+														).slice(1)}
+												</Badge>
 											</div>
-										</div>
-									</CardContent>
-								</Card>
+										</CardHeader>
+										<CardContent>
+											<div className="space-y-3">
+												<div className="flex items-center text-sm text-gray-600">
+													<Calendar className="h-4 w-4 mr-2" />
+													{formatDate(
+														event.startDate
+													)}{" "}
+													-{" "}
+													{formatDate(event.endDate)}
+												</div>
+
+												<p className="text-sm text-gray-700 line-clamp-2">
+													{event.description ||
+														"No description"}
+												</p>
+
+												<div className="space-y-4">
+													<div className="p-2 bg-muted rounded-md text-sm break-all">
+														{(() => {
+															const origin =
+																typeof window !==
+																"undefined"
+																	? window
+																			.location
+																			.origin
+																	: process
+																			.env
+																			.NEXT_PUBLIC_BASE_URL ||
+																	  "http://localhost:3000";
+															return `${origin}/artist-register/${event.id}`;
+														})()}
+													</div>
+													<Link
+														href={`/stage-manager/events/${event.id}`}
+													>
+														<Button className="w-full bg-purple-600 hover:bg-purple-700">
+															<ExternalLink className="h-4 w-4 mr-2" />
+															Manage Artists
+														</Button>
+													</Link>
+												</div>
+											</div>
+										</CardContent>
+									</Card>
+								</motion.div>
 							))}
 						</div>
-					</div>
-				) : (
-					<div className="text-center py-16">
+					</motion.div>
+				)}
+
+				{!loading && events.length === 0 && (
+					<motion.div
+						className="text-center py-16"
+						initial={{ opacity: 0, y: 20 }}
+						animate={{ opacity: 1, y: 0 }}
+						transition={{ duration: 0.6, delay: 0.4 }}
+					>
 						<div className="bg-white rounded-lg shadow-sm p-12 max-w-md mx-auto">
 							<Calendar className="h-16 w-16 text-gray-400 mx-auto mb-6" />
 							<h3 className="text-xl font-bold text-gray-900 mb-4">
@@ -434,7 +371,7 @@ export default function StageManagerPage() {
 								</Button>
 							</Link>
 						</div>
-					</div>
+					</motion.div>
 				)}
 			</div>
 		</div>

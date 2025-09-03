@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
 			totalStageManagers: stageManagers.length,
 			pendingApprovals: pendingUsers.length,
 			activeStageManagers: stageManagers.filter(
-				(sm) => sm.status === "active"
+				(sm: any) => sm.status === "active"
 			).length,
 		};
 

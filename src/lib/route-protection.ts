@@ -6,7 +6,8 @@ import { UserRole, UserStatus, SessionData, APIResponse } from "@/types";
 export async function withAuth<T = any>(
 	handler: (
 		request: NextRequest,
-		session: SessionData
+		session: SessionData,
+		context?: { params: Record<string, string> }
 	) => Promise<NextResponse<APIResponse<T>>>,
 	options?: {
 		requiredRole?: UserRole;
@@ -14,7 +15,8 @@ export async function withAuth<T = any>(
 	}
 ) {
 	return async (
-		request: NextRequest
+		request: NextRequest,
+		context?: { params: Record<string, string> }
 	): Promise<NextResponse<APIResponse<T>>> => {
 		try {
 			// Get session from request
@@ -66,7 +68,7 @@ export async function withAuth<T = any>(
 			}
 
 			// Call the protected handler
-			return await handler(request, session);
+			return await handler(request, session, context);
 		} catch (error) {
 			console.error("Route protection error:", error);
 			return NextResponse.json<APIResponse>(

@@ -1,142 +1,122 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import Link from "next/link";
-import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from "@/components/ui/table";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
 	ArrowLeft,
-	GripVertical,
-	Clock,
 	Music,
+	Calendar,
+	Clock,
+	GripVertical,
 	ArrowUp,
 	ArrowDown,
 } from "lucide-react";
-import { FameLogo } from "@/components/ui/fame-logo";
+import { motion } from "framer-motion";
+import Image from "next/image";
+import Link from "next/link";
 
 interface Artist {
 	id: string;
-	profile: {
-		artistName: string;
-		performanceStyle: string;
-		duration: number;
-	};
-	order: number;
+	artistName: string;
+	realName?: string;
+	style: string;
+	performanceDuration: number;
+	performanceOrder: number | null;
+	status: "pending" | "approved" | "rejected";
 }
 
 interface Event {
 	id: string;
 	name: string;
-	venue: string;
-	artists: Artist[];
+	venueName: string;
 }
 
-export default function PerformanceOrderPage() {
+export default function PerformanceOrderManagement() {
 	const params = useParams();
 	const router = useRouter();
 	const eventId = params.eventId as string;
+
 	const [event, setEvent] = useState<Event | null>(null);
-	const [loading, setLoading] = useState(true);
 	const [artists, setArtists] = useState<Artist[]>([]);
+	const [loading, setLoading] = useState(true);
 
 	useEffect(() => {
 		if (eventId) {
-			fetchEvent();
+			fetchEventData();
+			fetchArtists();
 		}
 	}, [eventId]);
 
-	const fetchEvent = async () => {
+	const fetchEventData = async () => {
 		try {
-			const response = await fetch(
-				`/api/stage-manager/events/${eventId}`
-			);
+			const response = await fetch(`/api/events/${eventId}`);
 			if (response.ok) {
-				const result = await response.json();
-				if (result.success) {
-					const eventData = result.data.event;
-					setEvent(eventData);
-
-					// Mock artists data with performance order
-					const mockArtists = [
-						{
-							id: "1",
-							profile: {
-								artistName: "DJ Rhythm",
-								performanceStyle: "Hip Hop",
-								duration: 5,
-							},
-							order: 1,
-						},
-						{
-							id: "2",
-							profile: {
-								artistName: "MC Flow",
-								performanceStyle: "Rap",
-								duration: 4,
-							},
-							order: 2,
-						},
-						{
-							id: "3",
-							profile: {
-								artistName: "Beat Master",
-								performanceStyle: "Electronic",
-								duration: 6,
-							},
-							order: 3,
-						},
-					];
-					setArtists(mockArtists);
-				}
-			} else if (response.status === 403) {
-				router.push("/login");
-			} else if (response.status === 404) {
-				router.push("/stage-manager/events");
+				const data = await response.json();
+				setEvent(data.data);
 			}
 		} catch (error) {
-			console.error("Error fetching event:", error);
+			console.error("Error fetching event data:", error);
+		}
+	};
+
+	const fetchArtists = async () => {
+		try {
+			setLoading(true);
+			const response = await fetch(`/api/events/${eventId}/artists`);
+			if (response.ok) {
+				const data = await response.json();
+				const approvedArtists = (data.artists || []).filter(
+					(artist: Artist) => artist.status === "approved"
+				);
+				setArtists(approvedArtists);
+			}
+		} catch (error) {
+			console.error("Error fetching artists:", error);
 		} finally {
 			setLoading(false);
 		}
 	};
 
-	const moveArtist = (artistId: string, direction: "up" | "down") => {
-		const currentIndex = artists.findIndex((a) => a.id === artistId);
-		if (currentIndex === -1) return;
-
+	const moveArtist = (fromIndex: number, toIndex: number) => {
 		const newArtists = [...artists];
-		const targetIndex =
-			direction === "up" ? currentIndex - 1 : currentIndex + 1;
+		const [movedArtist] = newArtists.splice(fromIndex, 1);
+		newArtists.splice(toIndex, 0, movedArtist);
 
-		if (targetIndex < 0 || targetIndex >= newArtists.length) return;
+		// Update performance order
+		const updatedArtists = newArtists.map((artist, index) => ({
+			...artist,
+			performanceOrder: index + 1,
+		}));
 
-		// Swap artists
-		[newArtists[currentIndex], newArtists[targetIndex]] = [
-			newArtists[targetIndex],
-			newArtists[currentIndex],
-		];
-
-		// Update order numbers
-		newArtists.forEach((artist, index) => {
-			artist.order = index + 1;
-		});
-
-		setArtists(newArtists);
+		setArtists(updatedArtists);
 	};
 
-	const getTotalDuration = () => {
-		return artists.reduce(
-			(total, artist) => total + artist.profile.duration,
-			0
-		);
+	const calculateStartTime = (index: number): string => {
+		const baseTime = new Date();
+		baseTime.setHours(19, 0, 0, 0); // Start at 7 PM
+
+		let totalMinutes = 0;
+		for (let i = 0; i < index; i++) {
+			totalMinutes += artists[i].performanceDuration + 5; // +5 minutes setup time
+		}
+
+		const startTime = new Date(baseTime.getTime() + totalMinutes * 60000);
+		return startTime.toLocaleTimeString("en-US", {
+			hour: "2-digit",
+			minute: "2-digit",
+		});
 	};
 
 	if (loading) {
@@ -152,187 +132,167 @@ export default function PerformanceOrderPage() {
 		);
 	}
 
-	if (!event) {
-		return (
-			<div className="min-h-screen bg-gray-50 flex items-center justify-center">
-				<div className="text-center">
-					<h2 className="text-2xl font-bold text-gray-900 mb-4">
-						Event Not Found
-					</h2>
-					<Link href="/stage-manager/events">
-						<Button>Back to Events</Button>
-					</Link>
-				</div>
-			</div>
-		);
-	}
-
 	return (
 		<div className="min-h-screen bg-gray-50">
-			{/* Header */}
 			<header className="bg-white shadow-sm border-b">
 				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 					<div className="flex justify-between items-center h-16">
 						<div className="flex items-center">
 							<Link
 								href={`/stage-manager/events/${eventId}`}
-								className="flex items-center"
+								className="mr-4"
 							>
-								<FameLogo
-									width={40}
-									height={40}
-									className="mr-3"
-								/>
-								<div>
-									<h1 className="text-xl font-semibold text-gray-900">
-										Performance Order
-									</h1>
-									<p className="text-sm text-gray-500">
-										{event.name} • {event.venue}
-									</p>
-								</div>
+								<Button variant="ghost" size="sm">
+									<ArrowLeft className="h-4 w-4 mr-2" />
+									Back to Event
+								</Button>
 							</Link>
+							<Image
+								src="/fame-logo.png"
+								alt="FAME Logo"
+								width={40}
+								height={40}
+								className="mr-3"
+							/>
+							<div>
+								<h1 className="text-xl font-semibold text-gray-900">
+									Performance Order
+								</h1>
+								<p className="text-sm text-gray-500">
+									{event?.name} at {event?.venueName}
+								</p>
+							</div>
 						</div>
-						<Link href={`/stage-manager/events/${eventId}`}>
-							<Button variant="outline">
-								<ArrowLeft className="h-4 w-4 mr-2" />
-								Back to Event
-							</Button>
-						</Link>
+						<div className="flex items-center gap-2">
+							<Music className="h-5 w-5" />
+							<span className="text-sm text-muted-foreground">
+								Show Management
+							</span>
+						</div>
 					</div>
 				</div>
 			</header>
 
-			<div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-				{/* Summary Card */}
-				<Card className="mb-8">
+			<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+				{/* Performance Order Table */}
+				<Card>
 					<CardHeader>
-						<CardTitle className="flex items-center">
-							<Clock className="h-5 w-5 mr-2 text-purple-600" />
-							Performance Summary
+						<CardTitle className="flex items-center gap-2">
+							<Music className="h-5 w-5" />
+							Performance Order & Timing
 						</CardTitle>
 					</CardHeader>
 					<CardContent>
-						<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-							<div className="text-center">
-								<p className="text-2xl font-bold text-purple-600">
-									{artists.length}
+						{artists.length === 0 ? (
+							<div className="text-center py-8">
+								<Music className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+								<p className="text-gray-500">
+									No approved artists for this event yet
 								</p>
-								<p className="text-sm text-gray-600">
-									Total Artists
+								<p className="text-sm text-gray-400 mt-2">
+									Artists need to be approved before they can
+									be added to the performance order
 								</p>
-							</div>
-							<div className="text-center">
-								<p className="text-2xl font-bold text-blue-600">
-									{getTotalDuration()}
-								</p>
-								<p className="text-sm text-gray-600">
-									Total Minutes
-								</p>
-							</div>
-							<div className="text-center">
-								<p className="text-2xl font-bold text-green-600">
-									{Math.floor(getTotalDuration() / 60)}h{" "}
-									{getTotalDuration() % 60}m
-								</p>
-								<p className="text-sm text-gray-600">
-									Duration
-								</p>
-							</div>
-						</div>
-					</CardContent>
-				</Card>
-
-				{/* Performance Order */}
-				<Card>
-					<CardHeader>
-						<CardTitle>Set Performance Order</CardTitle>
-						<CardDescription>
-							Drag and drop or use the arrows to reorder
-							performances
-						</CardDescription>
-					</CardHeader>
-					<CardContent>
-						{artists.length > 0 ? (
-							<div className="space-y-4">
-								{artists.map((artist, index) => (
-									<div
-										key={artist.id}
-										className="flex items-center p-4 bg-gray-50 rounded-lg border"
-									>
-										<div className="flex items-center mr-4">
-											<GripVertical className="h-5 w-5 text-gray-400 mr-2" />
-											<div className="w-8 h-8 bg-purple-600 rounded-full flex items-center justify-center text-white font-bold">
-												{artist.order}
-											</div>
-										</div>
-
-										<div className="flex-1">
-											<h3 className="font-semibold text-gray-900">
-												{artist.profile.artistName}
-											</h3>
-											<div className="flex items-center text-sm text-gray-600">
-												<Music className="h-4 w-4 mr-1" />
-												{
-													artist.profile
-														.performanceStyle
-												}{" "}
-												• {artist.profile.duration} min
-											</div>
-										</div>
-
-										<div className="flex space-x-2">
-											<Button
-												size="sm"
-												variant="outline"
-												onClick={() =>
-													moveArtist(artist.id, "up")
-												}
-												disabled={index === 0}
-											>
-												<ArrowUp className="h-4 w-4" />
-											</Button>
-											<Button
-												size="sm"
-												variant="outline"
-												onClick={() =>
-													moveArtist(
-														artist.id,
-														"down"
-													)
-												}
-												disabled={
-													index === artists.length - 1
-												}
-											>
-												<ArrowDown className="h-4 w-4" />
-											</Button>
-										</div>
-									</div>
-								))}
-
-								<div className="flex justify-end pt-4">
-									<Button className="bg-purple-600 hover:bg-purple-700">
-										Save Performance Order
-									</Button>
-								</div>
 							</div>
 						) : (
-							<div className="text-center py-12">
-								<Music className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-								<h3 className="text-lg font-semibold text-gray-900 mb-2">
-									No Artists Yet
-								</h3>
-								<p className="text-gray-600 mb-4">
-									Add artists to your event to set the
-									performance order.
-								</p>
-								<Link
-									href={`/stage-manager/events/${eventId}/artists`}
-								>
-									<Button>Manage Artists</Button>
-								</Link>
-							</div>
+							<Table>
+								<TableHeader>
+									<TableRow>
+										<TableHead className="w-16">
+											#
+										</TableHead>
+										<TableHead>Artist</TableHead>
+										<TableHead>Style</TableHead>
+										<TableHead>Duration</TableHead>
+										<TableHead>Start Time</TableHead>
+										<TableHead>Actions</TableHead>
+									</TableRow>
+								</TableHeader>
+								<TableBody>
+									{artists.map((artist, index) => (
+										<TableRow key={artist.id}>
+											<TableCell className="font-medium">
+												{index + 1}
+											</TableCell>
+											<TableCell>
+												<div className="flex items-center gap-3">
+													<Avatar className="h-8 w-8">
+														<AvatarFallback>
+															{artist.artistName
+																.charAt(0)
+																.toUpperCase()}
+														</AvatarFallback>
+													</Avatar>
+													<div>
+														<p className="font-medium">
+															{artist.artistName}
+														</p>
+														{artist.realName && (
+															<p className="text-xs text-muted-foreground">
+																{
+																	artist.realName
+																}
+															</p>
+														)}
+													</div>
+												</div>
+											</TableCell>
+											<TableCell>
+												<Badge variant="outline">
+													{artist.style}
+												</Badge>
+											</TableCell>
+											<TableCell>
+												<span className="flex items-center gap-1">
+													<Clock className="h-3 w-3" />
+													{artist.performanceDuration}{" "}
+													min
+												</span>
+											</TableCell>
+											<TableCell>
+												<span className="flex items-center gap-1">
+													<Calendar className="h-3 w-3" />
+													{calculateStartTime(index)}
+												</span>
+											</TableCell>
+											<TableCell>
+												<div className="flex items-center gap-2">
+													<GripVertical className="h-4 w-4 text-gray-400 cursor-grab" />
+													{index > 0 && (
+														<Button
+															variant="outline"
+															size="sm"
+															onClick={() =>
+																moveArtist(
+																	index,
+																	index - 1
+																)
+															}
+														>
+															<ArrowUp className="h-3 w-3" />
+														</Button>
+													)}
+													{index <
+														artists.length - 1 && (
+														<Button
+															variant="outline"
+															size="sm"
+															onClick={() =>
+																moveArtist(
+																	index,
+																	index + 1
+																)
+															}
+														>
+															<ArrowDown className="h-3 w-3" />
+														</Button>
+													)}
+												</div>
+											</TableCell>
+										</TableRow>
+									))}
+								</TableBody>
+							</Table>
 						)}
 					</CardContent>
 				</Card>

@@ -87,11 +87,21 @@ class DataAccess {
 	}
 
 	async getUserByEmail(email: string): Promise<User | null> {
-		// Only search in active stage managers who can login
-		const activeUsers =
-			(await this.readJson<User[]>("users/stage_manager/users.json")) ||
-			[];
-		return activeUsers.find((user) => user.email === email) || null;
+		// First check in super admin users
+		const superAdmins = await this.readJson<User[]>("users/super_admin/users.json");
+		if (superAdmins) {
+			const superAdmin = superAdmins.find(user => user.email === email);
+			if (superAdmin) return superAdmin;
+		}
+
+		// Then check in stage managers
+		const stageManagers = await this.readJson<User[]>("users/stage_manager/users.json");
+		if (stageManagers) {
+			const stageManager = stageManagers.find(user => user.email === email);
+			if (stageManager) return stageManager;
+		}
+
+		return null;
 	}
 
 	async createUser(user: User): Promise<void> {
