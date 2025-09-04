@@ -303,18 +303,18 @@ export default function SettingsPage() {
 						<CardContent>
 							<ul className="space-y-2 text-sm text-gray-600">
 								<li>
-									• Use a strong password with at least 8
+									- Use a strong password with at least 8
 									characters
 								</li>
 								<li>
-									• Include uppercase and lowercase letters,
+									- Include uppercase and lowercase letters,
 									numbers, and symbols
 								</li>
 								<li>
-									• Don't reuse passwords from other accounts
+									- Don't reuse passwords from other accounts
 								</li>
-								<li>• Change your password regularly</li>
-								<li>• Never share your password with anyone</li>
+								<li>- Change your password regularly</li>
+								<li>- Never share your password with anyone</li>
 							</ul>
 						</CardContent>
 					</Card>

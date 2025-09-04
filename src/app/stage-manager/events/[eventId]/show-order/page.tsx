@@ -503,7 +503,7 @@ export default function ShowOrderManagement() {
 															{artist.artistName}
 														</p>
 														<p className="text-sm text-muted-foreground">
-															{artist.style} •{" "}
+															{artist.style} -{" "}
 															{
 																artist.performanceDuration
 															}{" "}
@@ -599,7 +599,7 @@ export default function ShowOrderManagement() {
 																					.artist
 																					.style
 																			}{" "}
-																			•{" "}
+																			-{" "}
 																			{
 																				item
 																					.artist
@@ -624,7 +624,7 @@ export default function ShowOrderManagement() {
 																				item.setupTime
 																			}
 																			min
-																			•
+																			-
 																			Break:{" "}
 																			{
 																				item.breakTime
@@ -647,7 +647,7 @@ export default function ShowOrderManagement() {
 																			)
 																		}
 																	>
-																		↑
+																		Up
 																	</Button>
 																)}
 																{index <
@@ -666,7 +666,7 @@ export default function ShowOrderManagement() {
 																			)
 																		}
 																	>
-																		↓
+																		Down
 																	</Button>
 																)}
 																<Button

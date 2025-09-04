@@ -157,7 +157,7 @@ export default function CreateEventPage() {
 									/>
 									{errors.name && (
 										<p className="text-sm text-red-600 flex items-center mt-1">
-											<span className="mr-1">⚠️</span>
+											<span className="mr-1">!</span>
 											{errors.name.message}
 										</p>
 									)}
@@ -183,7 +183,7 @@ export default function CreateEventPage() {
 									/>
 									{errors.venueName && (
 										<p className="text-sm text-red-600 flex items-center mt-1">
-											<span className="mr-1">⚠️</span>
+											<span className="mr-1">!</span>
 											{errors.venueName.message}
 										</p>
 									)}
@@ -221,8 +221,10 @@ export default function CreateEventPage() {
 												</Button>
 											</PopoverTrigger>
 											<PopoverContent
-												className="w-auto p-0 bg-white border-2 border-gray-200 shadow-xl z-50 rounded-lg"
+												className="w-auto max-w-[95vw] p-0 bg-white border-2 border-gray-200 shadow-xl z-50 rounded-lg"
 												align="start"
+												side="bottom"
+												sideOffset={4}
 											>
 												<div className="p-3 border-b bg-gradient-to-r from-purple-50 to-pink-50">
 													<h4 className="font-semibold text-gray-900">
@@ -233,32 +235,36 @@ export default function CreateEventPage() {
 														begins
 													</p>
 												</div>
-												<Calendar
-													mode="single"
-													selected={startDate}
-													onSelect={(
-														date: Date | undefined
-													) => {
-														if (date) {
-															setValue(
-																"startDate",
-																date
-															);
-															setShowStartCalendar(
-																false
-															);
-														}
-													}}
-													disabled={(date: Date) =>
-														date < new Date()
-													}
-													className="rounded-md border-0 p-3"
-												/>
+												<div className="overflow-x-auto">
+													<Calendar
+														mode="single"
+														selected={startDate}
+														onSelect={(
+															date:
+																| Date
+																| undefined
+														) => {
+															if (date) {
+																setValue(
+																	"startDate",
+																	date
+																);
+																setShowStartCalendar(
+																	false
+																);
+															}
+														}}
+														disabled={(
+															date: Date
+														) => date < new Date()}
+														className="rounded-md border-0 p-2 sm:p-3 min-w-[280px]"
+													/>
+												</div>
 											</PopoverContent>
 										</Popover>
 										{errors.startDate && (
 											<p className="text-sm text-red-600 flex items-center mt-1">
-												<span className="mr-1">⚠️</span>
+												<span className="mr-1">!</span>
 												{errors.startDate.message}
 											</p>
 										)}
@@ -291,8 +297,10 @@ export default function CreateEventPage() {
 												</Button>
 											</PopoverTrigger>
 											<PopoverContent
-												className="w-auto p-0 bg-white border-2 border-gray-200 shadow-xl z-50 rounded-lg"
+												className="w-auto max-w-[95vw] p-0 bg-white border-2 border-gray-200 shadow-xl z-50 rounded-lg"
 												align="start"
+												side="bottom"
+												sideOffset={4}
 											>
 												<div className="p-3 border-b bg-gradient-to-r from-purple-50 to-pink-50">
 													<h4 className="font-semibold text-gray-900">
@@ -303,34 +311,40 @@ export default function CreateEventPage() {
 														ends
 													</p>
 												</div>
-												<Calendar
-													mode="single"
-													selected={endDate}
-													onSelect={(
-														date: Date | undefined
-													) => {
-														if (date) {
-															setValue(
-																"endDate",
-																date
-															);
-															setShowEndCalendar(
-																false
-															);
+												<div className="overflow-x-auto">
+													<Calendar
+														mode="single"
+														selected={endDate}
+														onSelect={(
+															date:
+																| Date
+																| undefined
+														) => {
+															if (date) {
+																setValue(
+																	"endDate",
+																	date
+																);
+																setShowEndCalendar(
+																	false
+																);
+															}
+														}}
+														disabled={(
+															date: Date
+														) =>
+															date <
+															(startDate ||
+																new Date())
 														}
-													}}
-													disabled={(date: Date) =>
-														date <
-														(startDate ||
-															new Date())
-													}
-													className="rounded-md border-0 p-3"
-												/>
+														className="rounded-md border-0 p-2 sm:p-3 min-w-[280px]"
+													/>
+												</div>
 											</PopoverContent>
 										</Popover>
 										{errors.endDate && (
 											<p className="text-sm text-red-600 flex items-center mt-1">
-												<span className="mr-1">⚠️</span>
+												<span className="mr-1">!</span>
 												{errors.endDate.message}
 											</p>
 										)}
@@ -358,7 +372,7 @@ export default function CreateEventPage() {
 									/>
 									{errors.description && (
 										<p className="text-sm text-red-600 flex items-center mt-1">
-											<span className="mr-1">⚠️</span>
+											<span className="mr-1">!</span>
 											{errors.description.message}
 										</p>
 									)}

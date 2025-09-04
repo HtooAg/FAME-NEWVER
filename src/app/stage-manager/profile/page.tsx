@@ -293,13 +293,13 @@ export default function ProfilePage() {
 										Account Information:
 									</p>
 									<ul className="text-sm text-blue-700 space-y-1">
-										<li>• Role: Stage Manager</li>
-										<li>• Account Type: Professional</li>
+										<li>- Role: Stage Manager</li>
+										<li>- Account Type: Professional</li>
 										<li>
-											• Registration Method: Web Interface
+											- Registration Method: Web Interface
 										</li>
 										<li>
-											• Approval Status:{" "}
+											- Approval Status:{" "}
 											{profileData?.accountStatus ===
 											"active"
 												? "Approved by Admin"

@@ -127,7 +127,7 @@ export default function StageManagerDashboard() {
 								<p className="text-sm text-gray-500">
 									{user?.profile?.firstName &&
 									user?.profile?.lastName
-										? `${user.profile.firstName} ${user.profile.lastName} • ${user.email}`
+										? `${user.profile.firstName} ${user.profile.lastName} - ${user.email}`
 										: user?.email || "Stage Manager"}
 								</p>
 							</div>

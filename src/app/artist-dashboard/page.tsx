@@ -26,12 +26,12 @@ import {
 	Youtube,
 	Edit,
 	Download,
-	Play,
-	Pause,
 	Palette,
 	Navigation,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { AudioPlayer } from "@/components/ui/audio-player";
+import { VideoPlayer, ImageViewer } from "@/components/ui/video-player";
 
 interface ArtistProfile {
 	id: string;
@@ -122,9 +122,6 @@ export default function ArtistDashboard() {
 	const { toast } = useToast();
 	const [profile, setProfile] = useState<ArtistProfile | null>(null);
 	const [loading, setLoading] = useState(true);
-	const [currentlyPlaying, setCurrentlyPlaying] = useState<string | null>(
-		null
-	);
 
 	useEffect(() => {
 		fetchArtistProfile();
@@ -165,14 +162,6 @@ export default function ArtistDashboard() {
 			});
 		} finally {
 			setLoading(false);
-		}
-	};
-
-	const handlePlayPause = (trackUrl: string) => {
-		if (currentlyPlaying === trackUrl) {
-			setCurrentlyPlaying(null);
-		} else {
-			setCurrentlyPlaying(trackUrl);
 		}
 	};
 
@@ -231,7 +220,8 @@ export default function ArtistDashboard() {
 
 	return (
 		<div className="min-h-screen bg-background">
-			<header className="border-b border-border"></header>	<div className="container mx-auto px-4 py-4">
+			<header className="border-b border-border">
+				<div className="container mx-auto px-4 py-4">
 					<div className="flex items-center justify-between">
 						<div>
 							<h1 className="text-2xl font-bold text-foreground">
@@ -243,9 +233,7 @@ export default function ArtistDashboard() {
 						</div>
 						<div className="flex items-center gap-2">
 							<Badge
-								variant={getStatusBadgeVariant(
-									profile.status
-								)}
+								variant={getStatusBadgeVariant(profile.status)}
 							>
 								{profile.status.charAt(0).toUpperCase() +
 									profile.status.slice(1)}
@@ -283,13 +271,9 @@ export default function ArtistDashboard() {
 					<TabsList className="grid w-full grid-cols-5">
 						<TabsTrigger value="overview">Overview</TabsTrigger>
 						<TabsTrigger value="music">Music</TabsTrigger>
-						<TabsTrigger value="technical">
-							Technical
-						</TabsTrigger>
+						<TabsTrigger value="technical">Technical</TabsTrigger>
 						<TabsTrigger value="gallery">Gallery</TabsTrigger>
-						<TabsTrigger value="event">
-							Event Details
-						</TabsTrigger>
+						<TabsTrigger value="event">Event Details</TabsTrigger>
 					</TabsList>
 
 					{/* Overview Tab */}
@@ -385,10 +369,7 @@ export default function ArtistDashboard() {
 								<div className="grid grid-cols-2 md:grid-cols-3 gap-4">
 									{profile.socialMedia.instagram && (
 										<a
-											href={
-												profile.socialMedia
-													.instagram
-											}
+											href={profile.socialMedia.instagram}
 											target="_blank"
 											rel="noopener noreferrer"
 											className="flex items-center gap-2 p-2 rounded-lg border hover:bg-muted transition-colors"
@@ -401,9 +382,7 @@ export default function ArtistDashboard() {
 									)}
 									{profile.socialMedia.facebook && (
 										<a
-											href={
-												profile.socialMedia.facebook
-											}
+											href={profile.socialMedia.facebook}
 											target="_blank"
 											rel="noopener noreferrer"
 											className="flex items-center gap-2 p-2 rounded-lg border hover:bg-muted transition-colors"
@@ -416,9 +395,7 @@ export default function ArtistDashboard() {
 									)}
 									{profile.socialMedia.youtube && (
 										<a
-											href={
-												profile.socialMedia.youtube
-											}
+											href={profile.socialMedia.youtube}
 											target="_blank"
 											rel="noopener noreferrer"
 											className="flex items-center gap-2 p-2 rounded-lg border hover:bg-muted transition-colors"
@@ -431,9 +408,7 @@ export default function ArtistDashboard() {
 									)}
 									{profile.socialMedia.website && (
 										<a
-											href={
-												profile.socialMedia.website
-											}
+											href={profile.socialMedia.website}
 											target="_blank"
 											rel="noopener noreferrer"
 											className="flex items-center gap-2 p-2 rounded-lg border hover:bg-muted transition-colors"
@@ -477,92 +452,70 @@ export default function ArtistDashboard() {
 							</CardHeader>
 							<CardContent>
 								<div className="space-y-4">
-									{profile.musicTracks.map(
-										(track, index) => (
-											<div
-												key={index}
-												className="border rounded-lg p-4 space-y-3"
-											>
-												<div className="flex items-center justify-between">
-													<div>
-														<h4 className="font-medium">
-															{
-																track.song_title
-															}
-														</h4>
-														<p className="text-sm text-muted-foreground">
-															Duration:{" "}
-															{formatDuration(
-																track.duration
-															)}{" "}
-															• Tempo:{" "}
-															{track.tempo}
-														</p>
-													</div>
-													<div className="flex items-center gap-2">
-														{track.is_main_track && (
-															<Badge variant="secondary">
-																Main Track
-															</Badge>
-														)}
-														{track.file_url && (
-															<Button
-																variant="outline"
-																size="sm"
-																onClick={() =>
-																	handlePlayPause(
-																		track.file_url
-																	)
-																}
-															>
-																{currentlyPlaying ===
-																track.file_url ? (
-																	<Pause className="h-4 w-4" />
-																) : (
-																	<Play className="h-4 w-4" />
-																)}
-															</Button>
-														)}
+									{profile.musicTracks.map((track, index) => (
+										<div
+											key={index}
+											className="border rounded-lg p-4 space-y-3"
+										>
+											<div className="flex items-center justify-between">
+												<div>
+													<h4 className="font-medium">
+														{track.song_title}
+													</h4>
+													<p className="text-sm text-muted-foreground">
+														Duration:{" "}
+														{formatDuration(
+															track.duration
+														)}{" "}
+														- Tempo: {track.tempo}
+													</p>
+												</div>
+												<div className="flex items-center gap-2">
+													{track.is_main_track && (
+														<Badge variant="secondary">
+															Main Track
+														</Badge>
+													)}
+												</div>
+											</div>
+											{track.file_url && (
+												<div className="space-y-2">
+													<AudioPlayer
+														track={track}
+														onError={(error) => {
+															console.error(
+																"Audio playback error:",
+																error
+															);
+														}}
+													/>
+													<div className="flex justify-end">
+														<Button
+															variant="outline"
+															size="sm"
+															onClick={async () => {
+																const {
+																	downloadFile,
+																} =
+																	await import(
+																		"@/lib/media-utils"
+																	);
+																await downloadFile(
+																	track.file_url,
+																	track.song_title ||
+																		track.songTitle
+																);
+															}}
+															className="flex items-center gap-2"
+														>
+															<Download className="h-3 w-3" />
+															Download
+														</Button>
 													</div>
 												</div>
-												{track.notes && (
-													<div>
-														<p className="text-sm text-muted-foreground">
-															DJ Notes:
-														</p>
-														<p className="text-sm">
-															{track.notes}
-														</p>
-													</div>
-												)}
-												{track.file_url &&
-													currentlyPlaying ===
-														track.file_url && (
-														<audio
-															controls
-															autoPlay
-															className="w-full"
-															onEnded={() =>
-																setCurrentlyPlaying(
-																	null
-																)
-															}
-														>
-															<source
-																src={
-																	track.file_url
-																}
-																type="audio/mpeg"
-															/>
-															Your browser
-															does not support
-															the audio
-															element.
-														</audio>
-													)}
-											</div>
-										)
-									)}
+											)}
+										</div>
+									))}
 								</div>
 							</CardContent>
 						</Card>
@@ -622,9 +575,7 @@ export default function ArtistDashboard() {
 												></div>
 												<span className="text-sm">
 													Primary:{" "}
-													{
-														profile.lightColorSingle
-													}
+													{profile.lightColorSingle}
 												</span>
 											</div>
 											{profile.lightColorTwo !==
@@ -641,9 +592,7 @@ export default function ArtistDashboard() {
 													></div>
 													<span className="text-sm">
 														Secondary:{" "}
-														{
-															profile.lightColorTwo
-														}
+														{profile.lightColorTwo}
 													</span>
 												</div>
 											)}
@@ -696,7 +645,10 @@ export default function ArtistDashboard() {
 											Starting Position
 										</p>
 										<p className="font-medium capitalize">
-											{profile.stagePositionStart?.replace("-", " ") || "Not specified"}
+											{profile.stagePositionStart?.replace(
+												"-",
+												" "
+											) || "Not specified"}
 										</p>
 									</div>
 									<div>
@@ -704,7 +656,10 @@ export default function ArtistDashboard() {
 											Ending Position
 										</p>
 										<p className="font-medium capitalize">
-											{profile.stagePositionEnd?.replace("-", " ") ?? "Not specified"}
+											{profile.stagePositionEnd?.replace(
+												"-",
+												" "
+											) ?? "Not specified"}
 										</p>
 									</div>
 									{profile.customStagePosition && (
@@ -713,9 +668,7 @@ export default function ArtistDashboard() {
 												Custom Position Details
 											</p>
 											<p className="text-sm">
-												{
-													profile.customStagePosition
-												}
+												{profile.customStagePosition}
 											</p>
 										</div>
 									)}
@@ -738,9 +691,7 @@ export default function ArtistDashboard() {
 							</Card>
 							<Card>
 								<CardHeader>
-									<CardTitle>
-										Stage Manager Notes
-									</CardTitle>
+									<CardTitle>Stage Manager Notes</CardTitle>
 								</CardHeader>
 								<CardContent>
 									<p className="text-sm">
@@ -773,31 +724,58 @@ export default function ArtistDashboard() {
 													key={index}
 													className="relative group"
 												>
-													<div className="aspect-square rounded-lg overflow-hidden bg-muted">
-														{file.type ===
-														"image" ? (
-															<img
-																src={
-																	file.url
-																}
-																alt={
+													{file.type === "image" ? (
+														<ImageViewer
+															file={file}
+															onError={(
+																error
+															) => {
+																console.error(
+																	"Image viewer error:",
+																	error
+																);
+															}}
+															className="aspect-square"
+														/>
+													) : (
+														<VideoPlayer
+															file={file}
+															onError={(
+																error
+															) => {
+																console.error(
+																	"Video player error:",
+																	error
+																);
+															}}
+															className="aspect-square"
+														/>
+													)}
+													<div className="flex items-center justify-between mt-1">
+														<p className="text-xs text-muted-foreground truncate flex-1">
+															{file.name}
+														</p>
+														<Button
+															variant="ghost"
+															size="sm"
+															onClick={async () => {
+																const {
+																	downloadFile,
+																} =
+																	await import(
+																		"@/lib/media-utils"
+																	);
+																await downloadFile(
+																	file.url,
 																	file.name
-																}
-																className="w-full h-full object-cover"
-															/>
-														) : (
-															<video
-																src={
-																	file.url
-																}
-																className="w-full h-full object-cover"
-																controls
-															/>
-														)}
+																);
+															}}
+															className="h-6 w-6 p-0 ml-1"
+															title="Download file"
+														>
+															<Download className="h-3 w-3" />
+														</Button>
 													</div>
-													<p className="text-xs text-muted-foreground mt-1 truncate">
-														{file.name}
-													</p>
 												</div>
 											)
 										)}
@@ -878,3 +856,7 @@ export default function ArtistDashboard() {
 						</Card>
 					</TabsContent>
 				</Tabs>
+			</main>
+		</div>
+	);
+}

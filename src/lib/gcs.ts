@@ -1,6 +1,4 @@
 import { Storage } from "@google-cloud/storage";
-import { readLocalJsonFile, writeLocalJsonFile } from "./local-storage";
-import { Event } from "@/types";
 
 // Upload configuration
 const UPLOAD_CONFIG = {
@@ -381,9 +379,12 @@ export async function fileExists(fileName: string): Promise<boolean> {
 export const readJsonFile = GCSService.readFile;
 export const writeJsonFile = GCSService.saveFile;
 export const deleteFile = GCSService.deleteFile;
-export const uploadFile = GCSService.saveFile;
 export const createFilePath = (fileName: string) => `uploads/${fileName}`;
-export const getSignedUrl = async (filePath: string) => {
+export const getSignedUrl = async (
+	filePath: string,
+	action: string = "read",
+	expires?: Date
+) => {
 	// For now, return a placeholder URL
 	return `https://storage.googleapis.com/${bucketName}/${filePath}`;
 };
@@ -400,7 +401,7 @@ function getFileExtension(filename: string): string {
 }
 
 // Determine file category based on MIME type
-function getFileCategory(
+export function getFileCategory(
 	mimeType: string
 ): "image" | "audio" | "video" | "document" {
 	if (UPLOAD_CONFIG.allowedImageTypes.includes(mimeType)) {
@@ -415,8 +416,8 @@ function getFileCategory(
 	return "document";
 }
 
-// Create organized folder structure
-export function createFilePath(
+// Create organized folder structure for uploads
+export function createUploadPath(
 	category: "user" | "event",
 	id: string,
 	fileType: string
@@ -478,8 +479,6 @@ export const updateUserStatus = async (
 
 	if (pendingIndex !== -1) {
 		// User is in pending, handle approval/rejection
-		const user = pendingUsers[pendingIndex];
-
 		if (status === "active") {
 			// Approve: move from pending to stage managers
 			return await approvePendingRegistration(userId);

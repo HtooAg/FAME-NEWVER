@@ -63,7 +63,7 @@ export async function createDevUsers() {
 		// Create test data
 		await createTestData();
 
-		console.log("✅ Development users created successfully!");
+		console.log("✓ Development users created successfully!");
 		console.log("Test accounts:");
 		console.log("- admin@fame.dev / admin123 (Super Admin)");
 		console.log("- manager@fame.dev / manager123 (Stage Manager)");

@@ -214,7 +214,7 @@ export default function ForgotPasswordPage() {
 
 				{/* Footer */}
 				<div className="text-center text-gray-500 text-sm">
-					<p>© 2025 FAME System. All rights reserved.</p>
+					<p>(c) 2025 FAME System. All rights reserved.</p>
 				</div>
 			</div>
 		</div>

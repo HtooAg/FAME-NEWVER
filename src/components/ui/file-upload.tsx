@@ -188,7 +188,7 @@ export function FileUpload({
 							Drag and drop files here, or click to select
 						</p>
 						<p className="text-xs text-gray-500">
-							Max size: {getMaxSize() / (1024 * 1024)}MB • Max
+							Max size: {getMaxSize() / (1024 * 1024)}MB - Max
 							files: {maxFiles}
 						</p>
 					</div>

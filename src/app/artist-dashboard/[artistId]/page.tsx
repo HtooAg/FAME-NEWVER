@@ -27,14 +27,15 @@ import {
 	Edit,
 	Download,
 	Play,
-	Pause,
-	Volume2,
 	Lightbulb,
 	Palette,
 	Navigation,
 	ArrowLeft,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { AudioPlayer } from "@/components/ui/audio-player";
+import { VideoPlayer, ImageViewer } from "@/components/ui/video-player";
+import { formatDuration } from "@/lib/media-utils";
 
 interface ArtistProfile {
 	id: string;
@@ -113,12 +114,7 @@ const getColorStyle = (colorValue: string) => {
 	return colorMap[colorValue] || "#888888";
 };
 
-// Helper function to format duration
-const formatDuration = (seconds: number) => {
-	const minutes = Math.floor(seconds / 60);
-	const remainingSeconds = seconds % 60;
-	return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
-};
+// Helper function to format duration is now imported from media-utils
 
 export default function ArtistDashboard() {
 	const router = useRouter();
@@ -127,9 +123,6 @@ export default function ArtistDashboard() {
 	const [profile, setProfile] = useState<ArtistProfile | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
-	const [currentlyPlaying, setCurrentlyPlaying] = useState<string | null>(
-		null
-	);
 
 	const artistId = params.artistId as string;
 
@@ -178,14 +171,6 @@ export default function ArtistDashboard() {
 			});
 		} finally {
 			setLoading(false);
-		}
-	};
-
-	const handlePlayPause = (trackUrl: string) => {
-		if (currentlyPlaying === trackUrl) {
-			setCurrentlyPlaying(null);
-		} else {
-			setCurrentlyPlaying(trackUrl);
 		}
 	};
 
@@ -488,7 +473,7 @@ export default function ArtistDashboard() {
 																{formatDuration(
 																	track.duration
 																)}{" "}
-																• Tempo:{" "}
+																- Tempo:{" "}
 																{track.tempo}
 															</p>
 														</div>
@@ -498,61 +483,46 @@ export default function ArtistDashboard() {
 																	Main Track
 																</Badge>
 															)}
-															{track.file_url && (
+														</div>
+													</div>
+													{track.file_url && (
+														<div className="space-y-2">
+															<AudioPlayer
+																track={track}
+																onError={(
+																	error
+																) => {
+																	console.error(
+																		"Audio playback error:",
+																		error
+																	);
+																}}
+															/>
+															<div className="flex justify-end">
 																<Button
 																	variant="outline"
 																	size="sm"
-																	onClick={() =>
-																		handlePlayPause(
-																			track.file_url
-																		)
-																	}
+																	onClick={async () => {
+																		const {
+																			downloadFile,
+																		} =
+																			await import(
+																				"@/lib/media-utils"
+																			);
+																		await downloadFile(
+																			track.file_url,
+																			track.song_title ||
+																				track.songTitle
+																		);
+																	}}
+																	className="flex items-center gap-2"
 																>
-																	{currentlyPlaying ===
-																	track.file_url ? (
-																		<Pause className="h-4 w-4" />
-																	) : (
-																		<Play className="h-4 w-4" />
-																	)}
+																	<Download className="h-3 w-3" />
+																	Download
 																</Button>
-															)}
-														</div>
-													</div>
-													{track.notes && (
-														<div>
-															<p className="text-sm text-muted-foreground">
-																DJ Notes:
-															</p>
-															<p className="text-sm">
-																{track.notes}
-															</p>
+															</div>
 														</div>
 													)}
-													{track.file_url &&
-														currentlyPlaying ===
-															track.file_url && (
-															<audio
-																controls
-																autoPlay
-																className="w-full"
-																onEnded={() =>
-																	setCurrentlyPlaying(
-																		null
-																	)
-																}
-															>
-																<source
-																	src={
-																		track.file_url
-																	}
-																	type="audio/mpeg"
-																/>
-																Your browser
-																does not support
-																the audio
-																element.
-															</audio>
-														)}
 												</div>
 											)
 										)
@@ -763,30 +733,65 @@ export default function ArtistDashboard() {
 							<CardContent>
 								{profile.galleryFiles &&
 								profile.galleryFiles.length > 0 ? (
-									<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+									<div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
 										{profile.galleryFiles.map(
 											(file, index) => (
-												<div key={index}>
+												<div
+													key={index}
+													className="relative group"
+												>
 													{file.type === "image" ? (
-														<div className="aspect-square rounded-lg overflow-hidden bg-muted">
-															<img
-																src={file.url}
-																alt={file.name}
-																className="w-full h-full object-cover"
-															/>
-														</div>
+														<ImageViewer
+															file={file}
+															onError={(
+																error
+															) => {
+																console.error(
+																	"Image viewer error:",
+																	error
+																);
+															}}
+															className="aspect-square"
+														/>
 													) : (
-														<div className="aspect-video rounded-lg overflow-hidden bg-muted">
-															<video
-																src={file.url}
-																className="w-full h-full object-cover"
-																controls
-															/>
-														</div>
+														<VideoPlayer
+															file={file}
+															onError={(
+																error
+															) => {
+																console.error(
+																	"Video player error:",
+																	error
+																);
+															}}
+															className="aspect-square"
+														/>
 													)}
-													<p className="text-xs text-muted-foreground mt-1 truncate">
-														{file.name}
-													</p>
+													<div className="flex items-center justify-between mt-1">
+														<p className="text-xs text-muted-foreground truncate flex-1">
+															{file.name}
+														</p>
+														<Button
+															variant="ghost"
+															size="sm"
+															onClick={async () => {
+																const {
+																	downloadFile,
+																} =
+																	await import(
+																		"@/lib/media-utils"
+																	);
+																await downloadFile(
+																	file.url,
+																	file.name
+																);
+															}}
+															className="h-6 w-6 p-0 ml-1"
+															title="Download file"
+														>
+															<Download className="h-3 w-3" />
+														</Button>
+													</div>
 												</div>
 											)
 										)}

@@ -191,7 +191,7 @@ export default function EventsManagementPage() {
 									Events Management
 								</h1>
 								<p className="text-sm text-gray-500">
-									{user?.name} • {user?.email} • Stage Manager
+									{user?.name} - {user?.email} - Stage Manager
 								</p>
 							</div>
 						</div>

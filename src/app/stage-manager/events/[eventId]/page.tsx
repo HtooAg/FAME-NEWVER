@@ -139,7 +139,7 @@ export default function EventManagementPage() {
 									Event Management
 								</h1>
 								<p className="text-sm text-gray-500">
-									{user?.name || "Stage Manager"} •{" "}
+									{user?.name || "Stage Manager"} -{" "}
 									{user?.email || ""}
 								</p>
 							</div>

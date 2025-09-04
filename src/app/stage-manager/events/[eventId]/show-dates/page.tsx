@@ -191,7 +191,7 @@ export default function ShowDateSelectionPage() {
 				</div>
 			</header>
 
-			<div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+			<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
 				<motion.div
 					initial={{ opacity: 0, y: 20 }}
 					animate={{ opacity: 1, y: 0 }}
@@ -225,9 +225,12 @@ export default function ShowDateSelectionPage() {
 									size="sm"
 									onClick={undo}
 									disabled={historyIndex <= 0}
+									className="flex-1 sm:flex-none"
 								>
-									<Undo2 className="h-4 w-4 mr-2" />
-									Undo
+									<Undo2 className="h-4 w-4 mr-1 sm:mr-2" />
+									<span className="hidden xs:inline">
+										Undo
+									</span>
 								</Button>
 								<Button
 									variant="outline"
@@ -236,36 +239,48 @@ export default function ShowDateSelectionPage() {
 									disabled={
 										historyIndex >= history.length - 1
 									}
+									className="flex-1 sm:flex-none"
 								>
-									<Redo2 className="h-4 w-4 mr-2" />
-									Redo
+									<Redo2 className="h-4 w-4 mr-1 sm:mr-2" />
+									<span className="hidden xs:inline">
+										Redo
+									</span>
 								</Button>
 							</div>
 
-							<div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+							<div className="grid grid-cols-1 xl:grid-cols-2 gap-6 lg:gap-8">
 								{/* Calendar */}
-								<div>
+								<div className="w-full order-1 xl:order-1">
 									<h3 className="text-lg font-semibold mb-4">
 										Available Dates For Shows
 									</h3>
-									<div className="border rounded-lg p-4 bg-card">
-										<Calendar
-											mode="multiple"
-											selected={selectedDates}
-											onSelect={(dates) => {
-												if (dates) {
-													setSelectedDates(dates);
-													addToHistory(dates);
-												}
-											}}
-											disabled={(date) =>
-												!isWithinInterval(date, {
-													start: eventStart,
-													end: eventEnd,
-												}) || date < new Date()
-											}
-											className="rounded-md w-full"
-										/>
+									<div className="border rounded-lg p-2 sm:p-4 bg-card">
+										<div className="w-full flex justify-center">
+											<div className="w-full max-w-sm sm:max-w-md md:max-w-lg">
+												<Calendar
+													mode="multiple"
+													selected={selectedDates}
+													onSelect={(dates) => {
+														if (dates) {
+															setSelectedDates(
+																dates
+															);
+															addToHistory(dates);
+														}
+													}}
+													disabled={(date) =>
+														!isWithinInterval(
+															date,
+															{
+																start: eventStart,
+																end: eventEnd,
+															}
+														) || date < new Date()
+													}
+													className="rounded-md w-full"
+												/>
+											</div>
+										</div>
 									</div>
 									<p className="text-sm text-muted-foreground mt-2 bg-muted p-3 rounded-lg">
 										Click dates to select/deselect show
@@ -275,7 +290,7 @@ export default function ShowDateSelectionPage() {
 								</div>
 
 								{/* Selected Dates */}
-								<div>
+								<div className="order-2 xl:order-2">
 									<h3 className="text-lg font-semibold mb-4">
 										Selected Show Dates
 									</h3>
@@ -380,7 +395,7 @@ export default function ShowDateSelectionPage() {
 							</div>
 
 							{/* Action Buttons */}
-							<div className="flex flex-col sm:flex-row gap-4 pt-6 border-t-2 border-gray-200">
+							<div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-6 border-t-2 border-gray-200">
 								<Button
 									onClick={saveShowDates}
 									disabled={

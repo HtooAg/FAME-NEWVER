@@ -50,10 +50,10 @@ export default async function AccountDeactivatedPage() {
 						may be due to:
 					</p>
 					<ul className="text-sm text-gray-300 space-y-1 text-left">
-						<li>• Account closure request</li>
-						<li>• Extended inactivity</li>
-						<li>• Administrative decision</li>
-						<li>• Terms of service violation</li>
+						<li>- Account closure request</li>
+						<li>- Extended inactivity</li>
+						<li>- Administrative decision</li>
+						<li>- Terms of service violation</li>
 					</ul>
 				</div>
 

@@ -48,10 +48,10 @@ export default async function AccountSuspendedPage() {
 						Account suspensions typically occur due to:
 					</p>
 					<ul className="text-sm text-gray-300 space-y-1 text-left">
-						<li>• Violation of platform terms of service</li>
-						<li>• Inappropriate behavior or content</li>
-						<li>• Security concerns</li>
-						<li>• Administrative review</li>
+						<li>- Violation of platform terms of service</li>
+						<li>- Inappropriate behavior or content</li>
+						<li>- Security concerns</li>
+						<li>- Administrative review</li>
 					</ul>
 				</div>
 

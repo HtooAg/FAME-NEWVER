@@ -6,12 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useToast } from "@/hooks/use-toast";
+// import { useToast } from "@/hooks/use-toast";
 import { User, Mail } from "lucide-react";
 
 export default function ArtistLogin() {
 	const router = useRouter();
-	const { toast } = useToast();
+	// const { toast } = useToast();
 	const [loading, setLoading] = useState(false);
 	const [formData, setFormData] = useState({
 		email: "",
@@ -41,11 +41,12 @@ export default function ArtistLogin() {
 					JSON.stringify(data.artist)
 				);
 
-				toast({
-					title: "Login Successful",
-					description:
-						"Welcome back! Redirecting to your dashboard...",
-				});
+				// toast({
+				// 	title: "Login Successful",
+				// 	description:
+				// 		"Welcome back! Redirecting to your dashboard...",
+				// });
+				console.log("Login Successful - Redirecting to dashboard...");
 
 				// Redirect to artist dashboard
 				router.push("/artist-dashboard");
@@ -54,12 +55,15 @@ export default function ArtistLogin() {
 			}
 		} catch (error) {
 			console.error("Login error:", error);
-			toast({
-				title: "Login Failed",
-				description:
-					"Artist not found. Please check your email and artist name.",
-				variant: "destructive",
-			});
+			// toast({
+			// 	title: "Login Failed",
+			// 	description:
+			// 		"Artist not found. Please check your email and artist name.",
+			// 	variant: "destructive",
+			// });
+			alert(
+				"Login Failed: Artist not found. Please check your email and artist name."
+			);
 		} finally {
 			setLoading(false);
 		}

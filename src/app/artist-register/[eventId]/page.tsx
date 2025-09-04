@@ -37,6 +37,7 @@ import {
 	CheckCircle,
 	Plus,
 } from "lucide-react";
+import { StagePositionPreview } from "@/components/StagePositionPreview";
 import {
 	Dialog,
 	DialogContent,
@@ -45,6 +46,9 @@ import {
 	DialogDescription,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { validateMediaFile } from "@/lib/media-validation";
+import { AudioPlayer } from "@/components/ui/audio-player";
+import { VideoPlayer, ImageViewer } from "@/components/ui/video-player";
 
 interface Event {
 	id: string;
@@ -78,6 +82,16 @@ const getColorStyle = (colorValue: string) => {
 		turquoise: "#40e0d0",
 	};
 	return colorMap[colorValue] || "#888888";
+};
+// Helper function to get gradient style for multiple colors
+const getGradientStyle = (colorCombo: string) => {
+	const colors = colorCombo.split("-").map((color) => getColorStyle(color));
+	if (colors.length === 2) {
+		return `linear-gradient(90deg, ${colors[0]} 50%, ${colors[1]} 50%)`;
+	} else if (colors.length === 3) {
+		return `linear-gradient(90deg, ${colors[0]} 33.33%, ${colors[1]} 33.33% 66.66%, ${colors[2]} 66.66%)`;
+	}
+	return colors[0] || "#888888";
 };
 
 function ArtistRegistrationForm() {
@@ -288,6 +302,283 @@ function ArtistRegistrationForm() {
 			setMusicTracks((prev) => prev.filter((_, i) => i !== index));
 		}
 	};
+	const handleMusicUpload = async (
+		e: React.ChangeEvent<HTMLInputElement>
+	) => {
+		const files = e.target.files;
+		if (!files) return;
+
+		for (let i = 0; i < files.length; i++) {
+			const file = files[i];
+
+			// Validate file before upload
+			const validation = validateMediaFile(
+				{
+					name: file.name,
+					size: file.size,
+					type: file.type,
+				},
+				"audio"
+			);
+
+			if (!validation.isValid) {
+				toast({
+					title: "Invalid file",
+					description: validation.error,
+					variant: "destructive",
+				});
+				continue;
+			}
+
+			// Get corresponding track for this file
+			const trackIndex = Math.min(i, musicTracks.length - 1);
+			const track = musicTracks[trackIndex];
+
+			// Detect audio duration automatically
+			const detectDuration = (file: File): Promise<number> => {
+				return new Promise((resolve) => {
+					const audio = new Audio();
+					const url = URL.createObjectURL(file);
+					audio.addEventListener("loadedmetadata", () => {
+						const durationInSeconds = Math.round(audio.duration);
+						URL.revokeObjectURL(url);
+						resolve(durationInSeconds);
+					});
+					audio.addEventListener("error", () => {
+						URL.revokeObjectURL(url);
+						resolve(0); // Default to 0 if detection fails
+					});
+					audio.src = url;
+				});
+			};
+
+			try {
+				// Detect duration before upload
+				const duration = await detectDuration(file);
+
+				// Upload to Google Cloud Storage
+				const uploadFormData = new FormData();
+				uploadFormData.append("file", file);
+				uploadFormData.append(
+					"eventId",
+					Array.isArray(eventId) ? eventId[0] : eventId
+				);
+				uploadFormData.append(
+					"artistId",
+					registeredArtistId ||
+						new URLSearchParams(window.location.search).get(
+							"artistId"
+						) ||
+						artistData.artist_name.replace(/[^a-zA-Z0-9]/g, "_") ||
+						"temp"
+				);
+				uploadFormData.append("fileType", "music");
+
+				const uploadResponse = await fetch("/api/gcs/upload", {
+					method: "POST",
+					body: uploadFormData,
+				});
+
+				if (!uploadResponse.ok) {
+					const errorData = await uploadResponse
+						.json()
+						.catch(() => ({}));
+					throw new Error(
+						errorData.error ||
+							`Music upload failed with status ${uploadResponse.status}`
+					);
+				}
+
+				const uploadResult = await uploadResponse.json();
+				console.log("Music upload result:", uploadResult);
+
+				setMusicTracks((prev) =>
+					prev.map((track, index) =>
+						index === trackIndex
+							? {
+									...track,
+									file_url: uploadResult.url,
+									file_path: uploadResult.fileName,
+									duration: duration,
+									uploadedAt: new Date().toISOString(),
+									fileSize: file.size,
+									contentType: file.type,
+							  }
+							: track
+					)
+				);
+
+				const minutes = Math.floor(duration / 60);
+				const seconds = duration % 60;
+				toast({
+					title: "Upload successful",
+					description: `${
+						file.name
+					} uploaded successfully - Duration: ${minutes}:${seconds
+						.toString()
+						.padStart(2, "0")}`,
+				});
+			} catch (error) {
+				console.error("Upload error:", error);
+				toast({
+					title: "Upload failed",
+					description: `Failed to upload ${file.name}: ${
+						error instanceof Error ? error.message : "Unknown error"
+					}`,
+					variant: "destructive",
+				});
+			}
+		}
+	};
+
+	const handleDeleteMusic = async (index: number) => {
+		const track = musicTracks[index];
+		if (!track.file_url) return;
+
+		try {
+			// Remove file_url from track
+			setMusicTracks((prev) =>
+				prev.map((track, i) =>
+					i === index ? { ...track, file_url: "" } : track
+				)
+			);
+
+			toast({
+				title: "File deleted",
+				description: "Music file has been removed successfully",
+			});
+		} catch (error) {
+			console.error("Delete error:", error);
+			toast({
+				title: "Delete failed",
+				description: "Failed to delete the music file",
+				variant: "destructive",
+			});
+		}
+	};
+
+	const handleGalleryUpload = async (
+		e: React.ChangeEvent<HTMLInputElement>
+	) => {
+		const files = e.target.files;
+		if (!files) return;
+
+		for (let i = 0; i < files.length; i++) {
+			const file = files[i];
+
+			// Validate file before upload
+			const mediaType = file.type.startsWith("image/")
+				? "image"
+				: "video";
+			const validation = validateMediaFile(
+				{
+					name: file.name,
+					size: file.size,
+					type: file.type,
+				},
+				mediaType
+			);
+
+			if (!validation.isValid) {
+				toast({
+					title: "Invalid file",
+					description: validation.error,
+					variant: "destructive",
+				});
+				continue;
+			}
+
+			try {
+				// Upload to Google Cloud Storage
+				const formData = new FormData();
+				formData.append("file", file);
+				formData.append(
+					"eventId",
+					Array.isArray(eventId) ? eventId[0] : eventId
+				);
+				formData.append(
+					"artistId",
+					registeredArtistId ||
+						new URLSearchParams(window.location.search).get(
+							"artistId"
+						) ||
+						artistData.artist_name.replace(/[^a-zA-Z0-9]/g, "_") ||
+						"temp"
+				);
+				formData.append(
+					"fileType",
+					file.type.startsWith("image/") ? "images" : "videos"
+				);
+
+				const uploadResponse = await fetch("/api/gcs/upload", {
+					method: "POST",
+					body: formData,
+				});
+
+				if (!uploadResponse.ok) {
+					const errorData = await uploadResponse
+						.json()
+						.catch(() => ({}));
+					throw new Error(
+						errorData.error ||
+							`Gallery upload failed with status ${uploadResponse.status}`
+					);
+				}
+
+				const uploadResult = await uploadResponse.json();
+				console.log("Gallery upload result:", uploadResult);
+
+				const fileType = file.type.startsWith("image/")
+					? "image"
+					: "video";
+
+				setGalleryFiles((prev) => [
+					...prev,
+					{
+						url: uploadResult.url,
+						file_url: uploadResult.url,
+						file_path: uploadResult.fileName,
+						type: fileType,
+						name: file.name,
+						size: file.size,
+						uploadedAt: new Date().toISOString(),
+						contentType: file.type,
+					},
+				]);
+
+				toast({
+					title: "Upload successful",
+					description: `${file.name} uploaded successfully`,
+				});
+			} catch (error) {
+				console.error("Upload error:", error);
+				toast({
+					title: "Upload failed",
+					description: `Failed to upload ${file.name}: ${
+						error instanceof Error ? error.message : "Unknown error"
+					}`,
+					variant: "destructive",
+				});
+			}
+		}
+	};
+
+	const handleDeleteGalleryFile = async (index: number) => {
+		try {
+			setGalleryFiles((prev) => prev.filter((_, i) => i !== index));
+			toast({
+				title: "File deleted",
+				description: "Gallery file has been removed successfully",
+			});
+		} catch (error) {
+			console.error("Delete error:", error);
+			toast({
+				title: "Delete failed",
+				description: "Failed to delete the gallery file",
+				variant: "destructive",
+			});
+		}
+	};
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
@@ -491,12 +782,20 @@ function ArtistRegistrationForm() {
 			</div>
 		);
 	}
-
 	return (
 		<div className="min-h-screen bg-background">
 			<header className="border-b border-border">
 				<div className="container mx-auto px-4 py-4">
 					<div className="flex items-center gap-4">
+						{/* <Button
+							variant="outline"
+							size="sm"
+							onClick={() => router.back()}
+							className="flex items-center gap-2"
+						>
+							<ArrowLeft className="h-4 w-4" />
+							Back to Home
+						</Button> */}
 						<div>
 							<h1 className="text-2xl font-bold text-foreground">
 								{existingProfile
@@ -504,7 +803,7 @@ function ArtistRegistrationForm() {
 									: "Artist Registration"}
 							</h1>
 							<p className="text-muted-foreground">
-								{event.name} - {event.venue}
+								{event.name}
 							</p>
 						</div>
 					</div>
@@ -753,30 +1052,77 @@ function ArtistRegistrationForm() {
 																</div>
 																<div className="space-y-2">
 																	<Label>
-																		Tempo
+																		Duration
+																		(mm:ss)
 																	</Label>
 																	<Input
+																		type="text"
+																		value={
+																			track.duration
+																				? `${Math.floor(
+																						track.duration /
+																							60
+																				  )}:${(
+																						track.duration %
+																						60
+																				  )
+																						.toString()
+																						.padStart(
+																							2,
+																							"0"
+																						)}`
+																				: "0:00"
+																		}
+																		readOnly
+																		placeholder="Auto-detected from upload"
+																		className="bg-muted cursor-not-allowed"
+																	/>
+																</div>
+															</div>
+															<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+																<div className="space-y-2">
+																	<Label>
+																		What is
+																		the
+																		tempo of
+																		your
+																		show?
+																	</Label>
+																	<Select
 																		value={
 																			track.tempo
 																		}
-																		onChange={(
-																			e
+																		onValueChange={(
+																			value
 																		) =>
 																			updateMusicTrack(
 																				index,
 																				"tempo",
-																				e
-																					.target
-																					.value
+																				value
 																			)
 																		}
-																		placeholder="e.g., Fast, Medium, Slow"
-																	/>
+																	>
+																		<SelectTrigger>
+																			<SelectValue placeholder="Select tempo" />
+																		</SelectTrigger>
+																		<SelectContent>
+																			<SelectItem value="slow">
+																				Slow
+																			</SelectItem>
+																			<SelectItem value="medium">
+																				Medium
+																			</SelectItem>
+																			<SelectItem value="fast">
+																				Fast
+																			</SelectItem>
+																		</SelectContent>
+																	</Select>
 																</div>
 															</div>
 															<div className="space-y-2">
 																<Label>
-																	DJ Notes
+																	Notes for
+																	the DJ
 																</Label>
 																<Textarea
 																	value={
@@ -793,144 +1139,269 @@ function ArtistRegistrationForm() {
 																				.value
 																		)
 																	}
-																	placeholder="Special instructions for the DJ"
-																	className="min-h-[80px]"
+																	placeholder="Any special notes about this track"
+																	rows={2}
 																/>
 															</div>
+															<div className="flex items-center space-x-2">
+																<input
+																	type="checkbox"
+																	id={`main-track-${index}`}
+																	checked={
+																		track.is_main_track
+																	}
+																	onChange={(
+																		e
+																	) =>
+																		updateMusicTrack(
+																			index,
+																			"is_main_track",
+																			e
+																				.target
+																				.checked
+																		)
+																	}
+																	className="rounded"
+																/>
+																<Label
+																	htmlFor={`main-track-${index}`}
+																>
+																	NOTE: You
+																	are
+																	responsible
+																	in double
+																	checking you
+																	have
+																	uploaded and
+																	send us the
+																	right music
+																	- always
+																	during the
+																	show and
+																	rehearsal
+																	bring a
+																	backup
+																</Label>
+															</div>
+															{track.file_url && (
+																<div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-3">
+																	<div className="flex justify-between items-center mb-2">
+																		<p className="text-green-800 dark:text-green-200 text-sm">
+																			✓ "
+																			{
+																				track.song_title
+																			}
+																			" by{" "}
+																			{
+																				artistData.artist_name
+																			}
+																		</p>
+																		<Button
+																			type="button"
+																			variant="destructive"
+																			size="sm"
+																			onClick={() =>
+																				handleDeleteMusic(
+																					index
+																				)
+																			}
+																			className="h-6 px-2 text-xs"
+																		>
+																			Delete
+																		</Button>
+																	</div>
+																	<AudioPlayer
+																		track={{
+																			song_title:
+																				track.song_title ||
+																				"Unknown Track",
+																			duration:
+																				track.duration ||
+																				0,
+																			notes:
+																				track.notes ||
+																				"",
+																			is_main_track:
+																				track.is_main_track ||
+																				false,
+																			tempo:
+																				track.tempo ||
+																				"medium",
+																			file_url:
+																				track.file_url,
+																			file_path:
+																				track.file_path,
+																		}}
+																		onError={(
+																			error
+																		) => {
+																			console.error(
+																				"Audio playback error:",
+																				error
+																			);
+																			toast(
+																				{
+																					title: "Audio Error",
+																					description:
+																						"Failed to play audio file. Please check the file format.",
+																					variant:
+																						"destructive",
+																				}
+																			);
+																		}}
+																	/>
+																</div>
+															)}
 														</div>
 													)
 												)}
 											</div>
-											<Button
-												type="button"
-												onClick={addMusicTrack}
-												variant="outline"
-												className="w-full"
-											>
-												<Plus className="h-4 w-4 mr-2" />
-												Add Another Track
-											</Button>
+											<div className="space-y-4">
+												<div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6">
+													<div className="text-center space-y-2">
+														<Upload className="h-8 w-8 mx-auto text-muted-foreground" />
+														<Label
+															htmlFor="music-upload"
+															className="text-sm font-medium cursor-pointer"
+														>
+															Upload Music Files
+														</Label>
+														<Input
+															id="music-upload"
+															type="file"
+															multiple
+															accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac,.wma"
+															onChange={
+																handleMusicUpload
+															}
+															className="hidden"
+														/>
+														<p className="text-xs text-muted-foreground">
+															Drag and drop or
+															click to upload
+															audio files (Max
+															10MB each)
+														</p>
+													</div>
+												</div>
+												{/* <div className="flex justify-center">
+													<Button
+														type="button"
+														variant="outline"
+														onClick={addMusicTrack}
+														className="flex items-center gap-2"
+													>
+														<Plus className="h-4 w-4" />
+														Add Another Track
+													</Button>
+												</div> */}
+											</div>
 										</div>
 									</CardContent>
 								</Card>
 							</AccordionContent>
 						</AccordionItem>
 
-						{/* 3. Technical Information */}
+						{/* 3. Technical Show Director Information */}
 						<AccordionItem value="technical-info">
 							<AccordionTrigger className="text-lg font-semibold">
 								<div className="flex items-center gap-2">
 									<Lightbulb className="h-5 w-5" />
-									Technical Information
+									Technical Show Director Information
 								</div>
 							</AccordionTrigger>
 							<AccordionContent>
 								<Card>
 									<CardContent className="space-y-6 pt-6">
 										<div className="space-y-4">
-											<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-												<div className="space-y-2">
-													<Label htmlFor="performance_duration">
-														Performance Duration
-														(minutes)
-													</Label>
-													<Input
-														id="performance_duration"
-														type="number"
-														min="1"
-														max="30"
-														value={
-															artistData.performance_duration
-														}
-														onChange={(e) =>
-															handleInputChange(
-																"performance_duration",
-																parseInt(
+											<div className="space-y-2">
+												<Label htmlFor="costume_color">
+													Costume Color *
+												</Label>
+												<Select
+													value={
+														artistData.costume_color
+													}
+													onValueChange={(value) =>
+														handleInputChange(
+															"costume_color",
+															value
+														)
+													}
+												>
+													<SelectTrigger>
+														<SelectValue placeholder="Select your main costume color" />
+													</SelectTrigger>
+													<SelectContent>
+														<SelectItem value="black">
+															Black
+														</SelectItem>
+														<SelectItem value="white">
+															White
+														</SelectItem>
+														<SelectItem value="red">
+															Red
+														</SelectItem>
+														<SelectItem value="blue">
+															Blue
+														</SelectItem>
+														<SelectItem value="green">
+															Green
+														</SelectItem>
+														<SelectItem value="yellow">
+															Yellow
+														</SelectItem>
+														<SelectItem value="purple">
+															Purple
+														</SelectItem>
+														<SelectItem value="pink">
+															Pink
+														</SelectItem>
+														<SelectItem value="orange">
+															Orange
+														</SelectItem>
+														<SelectItem value="gold">
+															Gold
+														</SelectItem>
+														<SelectItem value="silver">
+															Silver
+														</SelectItem>
+														<SelectItem value="multicolor">
+															Multicolor
+														</SelectItem>
+														<SelectItem value="custom">
+															Custom Color
+														</SelectItem>
+													</SelectContent>
+												</Select>
+												{artistData.costume_color ===
+													"custom" && (
+													<div className="space-y-2">
+														<Label htmlFor="custom_costume_color">
+															Custom Costume Color
+														</Label>
+														<Input
+															id="custom_costume_color"
+															value={
+																artistData.custom_costume_color
+															}
+															onChange={(e) =>
+																handleInputChange(
+																	"custom_costume_color",
 																	e.target
 																		.value
-																) || 5
-															)
-														}
-													/>
-												</div>
-												<div className="space-y-2">
-													<Label htmlFor="costume_color">
-														Costume Color *
-													</Label>
-													<Select
-														value={
-															artistData.costume_color
-														}
-														onValueChange={(
-															value
-														) =>
-															handleInputChange(
-																"costume_color",
-																value
-															)
-														}
-													>
-														<SelectTrigger>
-															<SelectValue placeholder="Select costume color" />
-														</SelectTrigger>
-														<SelectContent>
-															<SelectItem value="red">
-																Red
-															</SelectItem>
-															<SelectItem value="blue">
-																Blue
-															</SelectItem>
-															<SelectItem value="green">
-																Green
-															</SelectItem>
-															<SelectItem value="yellow">
-																Yellow
-															</SelectItem>
-															<SelectItem value="purple">
-																Purple
-															</SelectItem>
-															<SelectItem value="pink">
-																Pink
-															</SelectItem>
-															<SelectItem value="orange">
-																Orange
-															</SelectItem>
-															<SelectItem value="black">
-																Black
-															</SelectItem>
-															<SelectItem value="white">
-																White
-															</SelectItem>
-															<SelectItem value="other">
-																Other
-															</SelectItem>
-														</SelectContent>
-													</Select>
-												</div>
+																)
+															}
+															placeholder="Describe your custom costume color"
+														/>
+													</div>
+												)}
 											</div>
-
-											{artistData.costume_color ===
-												"other" && (
-												<div className="space-y-2">
-													<Label htmlFor="custom_costume_color">
-														Custom Costume Color
-													</Label>
-													<Input
-														id="custom_costume_color"
-														value={
-															artistData.custom_costume_color
-														}
-														onChange={(e) =>
-															handleInputChange(
-																"custom_costume_color",
-																e.target.value
-															)
-														}
-														placeholder="Describe your costume color"
-													/>
-												</div>
-											)}
-
+										</div>
+										<div className="space-y-4">
+											<h3 className="text-lg font-semibold">
+												Lighting Preferences
+											</h3>
 											<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 												<div className="space-y-2">
 													<Label htmlFor="light_color_single">
@@ -950,11 +1421,12 @@ function ArtistRegistrationForm() {
 														}
 													>
 														<SelectTrigger>
-															<SelectValue placeholder="Select primary color" />
+															<SelectValue />
 														</SelectTrigger>
 														<SelectContent>
 															<SelectItem value="trust">
-																Trust Lighting
+																Trust the
+																Lighting
 																Designer
 															</SelectItem>
 															<SelectItem value="red">
@@ -978,11 +1450,53 @@ function ArtistRegistrationForm() {
 															<SelectItem value="purple">
 																Purple
 															</SelectItem>
+															<SelectItem value="yellow">
+																Yellow
+															</SelectItem>
 															<SelectItem value="white">
 																White
 															</SelectItem>
+															<SelectItem value="warm-white">
+																Warm White
+															</SelectItem>
+															<SelectItem value="cold-blue">
+																Cold Blue
+															</SelectItem>
+															<SelectItem value="uv">
+																UV
+															</SelectItem>
+															<SelectItem value="rose">
+																Rose
+															</SelectItem>
+															<SelectItem value="orange">
+																Orange
+															</SelectItem>
+															<SelectItem value="pink">
+																Pink
+															</SelectItem>
+															<SelectItem value="teal">
+																Teal
+															</SelectItem>
+															<SelectItem value="lavender">
+																Lavender
+															</SelectItem>
+															<SelectItem value="gold">
+																Gold
+															</SelectItem>
+															<SelectItem value="turquoise">
+																Turquoise
+															</SelectItem>
 														</SelectContent>
 													</Select>
+													<div
+														className="w-full h-8 rounded border-2 border-muted-foreground/20"
+														style={{
+															background:
+																getColorStyle(
+																	artistData.light_color_single
+																),
+														}}
+													></div>
 												</div>
 												<div className="space-y-2">
 													<Label htmlFor="light_color_two">
@@ -1002,7 +1516,7 @@ function ArtistRegistrationForm() {
 														}
 													>
 														<SelectTrigger>
-															<SelectValue placeholder="Select secondary color" />
+															<SelectValue />
 														</SelectTrigger>
 														<SelectContent>
 															<SelectItem value="none">
@@ -1029,11 +1543,56 @@ function ArtistRegistrationForm() {
 															<SelectItem value="purple">
 																Purple
 															</SelectItem>
+															<SelectItem value="yellow">
+																Yellow
+															</SelectItem>
 															<SelectItem value="white">
 																White
 															</SelectItem>
+															<SelectItem value="warm-white">
+																Warm White
+															</SelectItem>
+															<SelectItem value="cold-blue">
+																Cold Blue
+															</SelectItem>
+															<SelectItem value="uv">
+																UV
+															</SelectItem>
+															<SelectItem value="rose">
+																Rose
+															</SelectItem>
+															<SelectItem value="orange">
+																Orange
+															</SelectItem>
+															<SelectItem value="pink">
+																Pink
+															</SelectItem>
+															<SelectItem value="teal">
+																Teal
+															</SelectItem>
+															<SelectItem value="lavender">
+																Lavender
+															</SelectItem>
+															<SelectItem value="gold">
+																Gold
+															</SelectItem>
+															<SelectItem value="turquoise">
+																Turquoise
+															</SelectItem>
 														</SelectContent>
 													</Select>
+													{artistData.light_color_two !==
+														"none" && (
+														<div
+															className="w-full h-8 rounded border-2 border-muted-foreground/20"
+															style={{
+																background:
+																	getColorStyle(
+																		artistData.light_color_two
+																	),
+															}}
+														></div>
+													)}
 												</div>
 												<div className="space-y-2">
 													<Label htmlFor="light_color_three">
@@ -1053,7 +1612,7 @@ function ArtistRegistrationForm() {
 														}
 													>
 														<SelectTrigger>
-															<SelectValue placeholder="Select third color" />
+															<SelectValue />
 														</SelectTrigger>
 														<SelectContent>
 															<SelectItem value="none">
@@ -1080,14 +1639,94 @@ function ArtistRegistrationForm() {
 															<SelectItem value="purple">
 																Purple
 															</SelectItem>
+															<SelectItem value="yellow">
+																Yellow
+															</SelectItem>
 															<SelectItem value="white">
 																White
 															</SelectItem>
+															<SelectItem value="warm-white">
+																Warm White
+															</SelectItem>
+															<SelectItem value="cold-blue">
+																Cold Blue
+															</SelectItem>
+															<SelectItem value="uv">
+																UV
+															</SelectItem>
+															<SelectItem value="rose">
+																Rose
+															</SelectItem>
+															<SelectItem value="orange">
+																Orange
+															</SelectItem>
+															<SelectItem value="pink">
+																Pink
+															</SelectItem>
+															<SelectItem value="teal">
+																Teal
+															</SelectItem>
+															<SelectItem value="lavender">
+																Lavender
+															</SelectItem>
+															<SelectItem value="gold">
+																Gold
+															</SelectItem>
+															<SelectItem value="turquoise">
+																Turquoise
+															</SelectItem>
 														</SelectContent>
 													</Select>
+													{artistData.light_color_three !==
+														"none" && (
+														<div
+															className="w-full h-8 rounded border-2 border-muted-foreground/20"
+															style={{
+																background:
+																	getColorStyle(
+																		artistData.light_color_three
+																	),
+															}}
+														></div>
+													)}
 												</div>
 											</div>
-
+											{/* Combined Colors Preview */}
+											{(artistData.light_color_two !==
+												"none" ||
+												artistData.light_color_three !==
+													"none") && (
+												<div className="space-y-2">
+													<Label>
+														Combined Colors Preview
+													</Label>
+													<div
+														className="w-full h-8 rounded border-2 border-muted-foreground/20"
+														style={{
+															background:
+																getGradientStyle(
+																	[
+																		artistData.light_color_single,
+																		artistData.light_color_two !==
+																		"none"
+																			? artistData.light_color_two
+																			: null,
+																		artistData.light_color_three !==
+																		"none"
+																			? artistData.light_color_three
+																			: null,
+																	]
+																		.filter(
+																			Boolean
+																		)
+																		.join(
+																			"-"
+																		)
+																),
+														}}
+													></div>
+												</div>
+											)}
 											<div className="space-y-2">
 												<Label htmlFor="light_requests">
 													Special Lighting Requests
@@ -1103,37 +1742,455 @@ function ArtistRegistrationForm() {
 															e.target.value
 														)
 													}
-													placeholder="Any special lighting requirements or effects"
-													className="min-h-[80px]"
+													placeholder="Any specific lighting effects, movements, or special requests"
+													rows={3}
 												/>
 											</div>
-
-											<div className="space-y-2">
-												<Label htmlFor="props_needed">
-													Props/Equipment Needed
-												</Label>
-												<Textarea
-													id="props_needed"
-													value={
-														artistData.props_needed
-													}
-													onChange={(e) =>
-														handleInputChange(
-															"props_needed",
-															e.target.value
-														)
-													}
-													placeholder="List any props, equipment, or setup requirements"
-													className="min-h-[80px]"
-												/>
+										</div>
+										<div className="space-y-4">
+											<h3 className="text-lg font-semibold">
+												Stage Positioning
+											</h3>
+											{/* Visual Stage Preview */}
+											<StagePositionPreview
+												startPosition={
+													artistData.stage_position_start
+												}
+												endPosition={
+													artistData.stage_position_end
+												}
+												className="mb-4"
+											/>
+											<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+												<div className="space-y-2">
+													<Label htmlFor="stage_position_start">
+														Starting Position
+													</Label>
+													<Select
+														value={
+															artistData.stage_position_start
+														}
+														onValueChange={(
+															value
+														) =>
+															handleInputChange(
+																"stage_position_start",
+																value
+															)
+														}
+													>
+														<SelectTrigger>
+															<SelectValue placeholder="Select starting position" />
+														</SelectTrigger>
+														<SelectContent>
+															<SelectItem value="upstage-left">
+																Upstage Left
+															</SelectItem>
+															<SelectItem value="upstage">
+																Upstage Center
+															</SelectItem>
+															<SelectItem value="upstage-right">
+																Upstage Right
+															</SelectItem>
+															<SelectItem value="left">
+																Center Left
+															</SelectItem>
+															<SelectItem value="center">
+																Center
+															</SelectItem>
+															<SelectItem value="right">
+																Center Right
+															</SelectItem>
+															<SelectItem value="downstage-left">
+																Downstage Left
+															</SelectItem>
+															<SelectItem value="downstage">
+																Downstage Center
+															</SelectItem>
+															<SelectItem value="downstage-right">
+																Downstage Right
+															</SelectItem>
+															<SelectItem value="custom">
+																Custom Position
+															</SelectItem>
+														</SelectContent>
+													</Select>
+												</div>
+												<div className="space-y-2">
+													<Label htmlFor="stage_position_end">
+														Ending Position
+													</Label>
+													<Select
+														value={
+															artistData.stage_position_end
+														}
+														onValueChange={(
+															value
+														) =>
+															handleInputChange(
+																"stage_position_end",
+																value
+															)
+														}
+													>
+														<SelectTrigger>
+															<SelectValue placeholder="Select ending position" />
+														</SelectTrigger>
+														<SelectContent>
+															<SelectItem value="upstage-left">
+																Upstage Left
+															</SelectItem>
+															<SelectItem value="upstage">
+																Upstage Center
+															</SelectItem>
+															<SelectItem value="upstage-right">
+																Upstage Right
+															</SelectItem>
+															<SelectItem value="left">
+																Center Left
+															</SelectItem>
+															<SelectItem value="center">
+																Center
+															</SelectItem>
+															<SelectItem value="right">
+																Center Right
+															</SelectItem>
+															<SelectItem value="downstage-left">
+																Downstage Left
+															</SelectItem>
+															<SelectItem value="downstage">
+																Downstage Center
+															</SelectItem>
+															<SelectItem value="downstage-right">
+																Downstage Right
+															</SelectItem>
+															<SelectItem value="custom">
+																Custom Position
+															</SelectItem>
+														</SelectContent>
+													</Select>
+												</div>
 											</div>
+											{(artistData.stage_position_start ===
+												"custom" ||
+												artistData.stage_position_end ===
+													"custom") && (
+												<div className="space-y-2">
+													<Label htmlFor="custom_stage_position">
+														Custom Stage Position
+														Details
+													</Label>
+													<Textarea
+														id="custom_stage_position"
+														value={
+															artistData.custom_stage_position
+														}
+														onChange={(e) =>
+															handleInputChange(
+																"custom_stage_position",
+																e.target.value
+															)
+														}
+														placeholder="Describe your custom stage positioning requirements"
+														rows={3}
+													/>
+												</div>
+											)}
+										</div>
+										<div className="space-y-2">
+											<Label htmlFor="props_needed">
+												Props and Equipment Needed
+											</Label>
+											<Textarea
+												id="props_needed"
+												value={artistData.props_needed}
+												onChange={(e) =>
+													handleInputChange(
+														"props_needed",
+														e.target.value
+													)
+												}
+												placeholder="List any props, equipment, or special items you need for your performance"
+												rows={3}
+											/>
 										</div>
 									</CardContent>
 								</Card>
 							</AccordionContent>
 						</AccordionItem>
+						{/* 4. Stage Visual Manager Information */}
+						<AccordionItem value="visual-info">
+							<AccordionTrigger className="text-lg font-semibold">
+								<div className="flex items-center gap-2">
+									<Image className="h-5 w-5" />
+									Stage Visual Manager Information
+								</div>
+							</AccordionTrigger>
+							<AccordionContent>
+								<Card>
+									<CardContent className="space-y-6 pt-6">
+										{/* Performance Video Link */}
+										<div className="space-y-2">
+											<Label htmlFor="show_link">
+												Performance Video/Demo Link
+											</Label>
+											<Input
+												id="show_link"
+												type="url"
+												value={artistData.show_link}
+												onChange={(e) =>
+													handleInputChange(
+														"show_link",
+														e.target.value
+													)
+												}
+												placeholder="YouTube, Vimeo, or other video link"
+											/>
+										</div>
 
-						{/* 4. Additional Information */}
+										{/* Social Media Links */}
+										<div className="space-y-4">
+											<h3 className="text-lg font-semibold">
+												Social Media Links
+											</h3>
+											<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+												<div className="space-y-2">
+													<Label htmlFor="instagram_link">
+														Instagram
+													</Label>
+													<Input
+														id="instagram_link"
+														type="url"
+														value={
+															artistData.instagram_link
+														}
+														onChange={(e) =>
+															handleInputChange(
+																"instagram_link",
+																e.target.value
+															)
+														}
+														placeholder="https://instagram.com/username"
+													/>
+												</div>
+												<div className="space-y-2">
+													<Label htmlFor="facebook_link">
+														Facebook
+													</Label>
+													<Input
+														id="facebook_link"
+														type="url"
+														value={
+															artistData.facebook_link
+														}
+														onChange={(e) =>
+															handleInputChange(
+																"facebook_link",
+																e.target.value
+															)
+														}
+														placeholder="https://facebook.com/username"
+													/>
+												</div>
+												<div className="space-y-2">
+													<Label htmlFor="tiktok_link">
+														TikTok
+													</Label>
+													<Input
+														id="tiktok_link"
+														type="url"
+														value={
+															artistData.tiktok_link
+														}
+														onChange={(e) =>
+															handleInputChange(
+																"tiktok_link",
+																e.target.value
+															)
+														}
+														placeholder="https://tiktok.com/@username"
+													/>
+												</div>
+												<div className="space-y-2">
+													<Label htmlFor="youtube_link">
+														YouTube
+													</Label>
+													<Input
+														id="youtube_link"
+														type="url"
+														value={
+															artistData.youtube_link
+														}
+														onChange={(e) =>
+															handleInputChange(
+																"youtube_link",
+																e.target.value
+															)
+														}
+														placeholder="https://youtube.com/channel/..."
+													/>
+												</div>
+												<div className="space-y-2 md:col-span-2">
+													<Label htmlFor="website_link">
+														Website
+													</Label>
+													<Input
+														id="website_link"
+														type="url"
+														value={
+															artistData.website_link
+														}
+														onChange={(e) =>
+															handleInputChange(
+																"website_link",
+																e.target.value
+															)
+														}
+														placeholder="https://yourwebsite.com"
+													/>
+												</div>
+											</div>
+										</div>
+										{/* Gallery Upload */}
+										<div className="space-y-4">
+											<h3 className="text-lg font-semibold">
+												Image & Video Gallery
+											</h3>
+											{/* Upload Area */}
+											<div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6">
+												<div className="text-center space-y-2">
+													<Upload className="h-8 w-8 mx-auto text-muted-foreground" />
+													<Label
+														htmlFor="gallery-upload"
+														className="text-sm font-medium cursor-pointer"
+													>
+														Upload Images & Videos
+													</Label>
+													<Input
+														id="gallery-upload"
+														type="file"
+														multiple
+														accept="image/*,video/*"
+														onChange={
+															handleGalleryUpload
+														}
+														className="hidden"
+													/>
+													<p className="text-xs text-muted-foreground">
+														Upload photos and videos
+														of your performance (Max
+														50MB each)
+													</p>
+												</div>
+											</div>
+											{/* Gallery Preview */}
+											{galleryFiles.length > 0 && (
+												<div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+													{galleryFiles.map(
+														(file, index) => (
+															<div
+																key={index}
+																className="relative group"
+															>
+																{file.type ===
+																"image" ? (
+																	<ImageViewer
+																		file={{
+																			name: file.name,
+																			type: "image",
+																			url: file.url,
+																			file_path:
+																				file.file_path,
+																			size:
+																				file.size ||
+																				0,
+																			uploadedAt:
+																				file.uploadedAt,
+																			contentType:
+																				file.contentType,
+																		}}
+																		onError={(
+																			error
+																		) => {
+																			console.error(
+																				"Image viewer error:",
+																				error
+																			);
+																			toast(
+																				{
+																					title: "Image Error",
+																					description:
+																						"Failed to load image file. Please check the file format.",
+																					variant:
+																						"destructive",
+																				}
+																			);
+																		}}
+																		className="aspect-square"
+																	/>
+																) : (
+																	<VideoPlayer
+																		file={{
+																			name: file.name,
+																			type: "video",
+																			url: file.url,
+																			file_path:
+																				file.file_path,
+																			size:
+																				file.size ||
+																				0,
+																			uploadedAt:
+																				file.uploadedAt,
+																			contentType:
+																				file.contentType,
+																		}}
+																		onError={(
+																			error
+																		) => {
+																			console.error(
+																				"Video player error:",
+																				error
+																			);
+																			toast(
+																				{
+																					title: "Video Error",
+																					description:
+																						"Failed to play video file. Please check the file format.",
+																					variant:
+																						"destructive",
+																				}
+																			);
+																		}}
+																		className="aspect-square"
+																	/>
+																)}
+																<Button
+																	type="button"
+																	variant="destructive"
+																	size="sm"
+																	onClick={() =>
+																		handleDeleteGalleryFile(
+																			index
+																		)
+																	}
+																	className="absolute top-2 right-2 h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+																>
+																	x
+																</Button>
+																<p className="text-xs text-muted-foreground mt-1 truncate">
+																	{file.name}
+																</p>
+															</div>
+														)
+													)}
+												</div>
+											)}
+										</div>
+									</CardContent>
+								</Card>
+							</AccordionContent>
+						</AccordionItem>
+						{/* 5. Additional Information */}
 						<AccordionItem value="additional-info">
 							<AccordionTrigger className="text-lg font-semibold">
 								<div className="flex items-center gap-2">
@@ -1144,158 +2201,58 @@ function ArtistRegistrationForm() {
 							<AccordionContent>
 								<Card>
 									<CardContent className="space-y-4 pt-6">
-										<div className="space-y-4">
-											<div className="space-y-2">
-												<Label htmlFor="show_link">
-													Demo Video/Show Link
-												</Label>
-												<Input
-													id="show_link"
-													type="url"
-													value={artistData.show_link}
-													onChange={(e) =>
-														handleInputChange(
-															"show_link",
-															e.target.value
-														)
-													}
-													placeholder="https://youtube.com/watch?v=..."
-												/>
-											</div>
-
-											<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-												<div className="space-y-2">
-													<Label htmlFor="instagram_link">
-														Instagram
-													</Label>
-													<Input
-														id="instagram_link"
-														value={
-															artistData.instagram_link
-														}
-														onChange={(e) =>
-															handleInputChange(
-																"instagram_link",
-																e.target.value
-															)
-														}
-														placeholder="@username or full URL"
-													/>
-												</div>
-												<div className="space-y-2">
-													<Label htmlFor="facebook_link">
-														Facebook
-													</Label>
-													<Input
-														id="facebook_link"
-														value={
-															artistData.facebook_link
-														}
-														onChange={(e) =>
-															handleInputChange(
-																"facebook_link",
-																e.target.value
-															)
-														}
-														placeholder="Facebook page URL"
-													/>
-												</div>
-											</div>
-
-											<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-												<div className="space-y-2">
-													<Label htmlFor="youtube_link">
-														YouTube
-													</Label>
-													<Input
-														id="youtube_link"
-														value={
-															artistData.youtube_link
-														}
-														onChange={(e) =>
-															handleInputChange(
-																"youtube_link",
-																e.target.value
-															)
-														}
-														placeholder="YouTube channel URL"
-													/>
-												</div>
-												<div className="space-y-2">
-													<Label htmlFor="website_link">
-														Website
-													</Label>
-													<Input
-														id="website_link"
-														value={
-															artistData.website_link
-														}
-														onChange={(e) =>
-															handleInputChange(
-																"website_link",
-																e.target.value
-															)
-														}
-														placeholder="Your website URL"
-													/>
-												</div>
-											</div>
-
-											<div className="space-y-2">
-												<Label htmlFor="mc_notes">
-													Notes for MC
-												</Label>
-												<Textarea
-													id="mc_notes"
-													value={artistData.mc_notes}
-													onChange={(e) =>
-														handleInputChange(
-															"mc_notes",
-															e.target.value
-														)
-													}
-													placeholder="Special instructions or information for the MC"
-													className="min-h-[80px]"
-												/>
-											</div>
-
-											<div className="space-y-2">
-												<Label htmlFor="stage_manager_notes">
-													Notes for Stage Manager
-												</Label>
-												<Textarea
-													id="stage_manager_notes"
-													value={
-														artistData.stage_manager_notes
-													}
-													onChange={(e) =>
-														handleInputChange(
-															"stage_manager_notes",
-															e.target.value
-														)
-													}
-													placeholder="Special instructions or requirements for the stage manager"
-													className="min-h-[80px]"
-												/>
-											</div>
-
-											<div className="space-y-2">
-												<Label htmlFor="notes">
-													General Notes
-												</Label>
-												<Textarea
-													id="notes"
-													value={artistData.notes}
-													onChange={(e) =>
-														handleInputChange(
-															"notes",
-															e.target.value
-														)
-													}
-													placeholder="Any additional information or special requirements"
-													className="min-h-[80px]"
-												/>
-											</div>
+										<div className="space-y-2">
+											<Label htmlFor="mc_notes">
+												MC Notes
+											</Label>
+											<Textarea
+												id="mc_notes"
+												value={artistData.mc_notes}
+												onChange={(e) =>
+													handleInputChange(
+														"mc_notes",
+														e.target.value
+													)
+												}
+												placeholder="Information for the MC to announce before your performance"
+												className="min-h-[100px]"
+											/>
+										</div>
+										<div className="space-y-2">
+											<Label htmlFor="stage_manager_notes">
+												Stage Manager Notes
+											</Label>
+											<Textarea
+												id="stage_manager_notes"
+												value={
+													artistData.stage_manager_notes
+												}
+												onChange={(e) =>
+													handleInputChange(
+														"stage_manager_notes",
+														e.target.value
+													)
+												}
+												placeholder="Notes for the stage manager about props and performance requirements"
+												className="min-h-[100px]"
+											/>
+										</div>
+										<div className="space-y-2">
+											<Label htmlFor="notes">
+												Additional Notes
+											</Label>
+											<Textarea
+												id="notes"
+												value={artistData.notes}
+												onChange={(e) =>
+													handleInputChange(
+														"notes",
+														e.target.value
+													)
+												}
+												placeholder="Any additional information, special requirements, or notes for the event organizers"
+												className="min-h-[100px]"
+											/>
 										</div>
 									</CardContent>
 								</Card>
@@ -1303,75 +2260,91 @@ function ArtistRegistrationForm() {
 						</AccordionItem>
 					</Accordion>
 
-					{/* Submit Button */}
-					<div className="flex justify-end space-x-4">
+					<div className="flex gap-4">
 						<Button
-							type="button"
-							variant="outline"
-							onClick={() => router.back()}
+							type="submit"
+							disabled={submitting}
+							className="flex-1 text-white hover:text-white active:text-white focus:text-white"
 						>
-							Cancel
-						</Button>
-						<Button type="submit" disabled={submitting}>
-							{submitting ? (
-								<div className="flex items-center">
-									<div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-									{existingProfile
-										? "Updating..."
-										: "Registering..."}
-								</div>
-							) : existingProfile ? (
-								"Update Profile"
-							) : (
-								"Register Artist"
-							)}
+							{submitting
+								? "Registering..."
+								: "Register for Event"}
 						</Button>
 					</div>
 				</form>
+			</main>
 
-				{/* Success Dialog */}
-				<Dialog
-					open={showSuccessDialog}
-					onOpenChange={setShowSuccessDialog}
-				>
-					<DialogContent>
-						<DialogHeader>
-							<DialogTitle className="flex items-center gap-2">
-								<CheckCircle className="h-5 w-5 text-green-600" />
-								{existingProfile
-									? "Profile Updated!"
-									: "Registration Successful!"}
+			<Dialog
+				open={showSuccessDialog}
+				onOpenChange={setShowSuccessDialog}
+			>
+				<DialogContent className="max-w-md mx-auto bg-white border-2 border-gray-200 shadow-xl">
+					<div className="text-center space-y-6 py-6 bg-white">
+						<div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-green-100">
+							<CheckCircle className="h-12 w-12 text-green-600" />
+						</div>
+
+						<div className="space-y-3">
+							<DialogTitle className="text-2xl font-bold text-gray-900 text-center">
+								Registration Successful!
 							</DialogTitle>
-							<DialogDescription>
-								{existingProfile
-									? "Your artist profile has been updated successfully."
-									: "Your artist registration has been submitted successfully."}
+							<DialogDescription className="text-lg text-center text-gray-700">
+								<span className="font-semibold text-gray-900">
+									{artistData.artist_name}
+								</span>{" "}
+								has been registered for{" "}
+								<span className="font-semibold text-gray-900">
+									{event?.name}
+								</span>
 							</DialogDescription>
-						</DialogHeader>
-						<div className="flex justify-end space-x-2">
-							<Button
-								variant="outline"
-								onClick={() => setShowSuccessDialog(false)}
-							>
-								Close
-							</Button>
 							{registeredArtistId && (
-								<Button
-									onClick={() =>
-										router.push(
-											`/artist-dashboard/${registeredArtistId}`
-										)
-									}
-								>
-									View Dashboard
-								</Button>
+								<div className="text-sm text-gray-600 bg-gray-100 rounded-lg p-3 text-center">
+									<span className="font-medium text-gray-800">
+										Artist ID:
+									</span>{" "}
+									<span className="text-gray-900">
+										{registeredArtistId}
+									</span>
+								</div>
 							)}
 						</div>
-					</DialogContent>
-				</Dialog>
-			</main>
+
+						<Button
+							onClick={() => {
+								// Use the stored artist ID first, then fallback to URL params
+								const artistId =
+									registeredArtistId ||
+									new URLSearchParams(
+										window.location.search
+									).get("artistId");
+								console.log(
+									"Redirecting to dashboard with artistId:",
+									artistId
+								);
+
+								if (artistId) {
+									router.push(
+										`/artist-dashboard/${artistId}`
+									);
+								} else {
+									console.error(
+										"No artist ID found for redirect"
+									);
+									router.push("/artist-dashboard");
+								}
+							}}
+							className="w-full py-3 text-lg font-semibold text-white bg-purple-600 hover:bg-purple-700 border-0"
+							size="lg"
+						>
+							Go to Dashboard
+						</Button>
+					</div>
+				</DialogContent>
+			</Dialog>
 		</div>
 	);
 }
 
-export default ArtistRegistrationForm;
+export default function ArtistRegistration() {
+	return <ArtistRegistrationForm />;
+}

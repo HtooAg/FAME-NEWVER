@@ -164,7 +164,7 @@ export default function ArtistDashboard() {
 									Artist Dashboard
 								</h1>
 								<p className="text-sm text-gray-500">
-									{user?.name} • {profile?.stageName}
+									{user?.name} - {profile?.stageName}
 								</p>
 							</div>
 						</div>
