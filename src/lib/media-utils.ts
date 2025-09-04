@@ -198,28 +198,70 @@ export async function downloadFile(
 			filePath = url;
 		}
 
+		console.log("Attempting to download file:", filePath);
+
 		// Call our download API to get a signed URL
 		const response = await fetch(`/api/download/${filePath}`);
 
 		if (!response.ok) {
-			throw new Error(`Download API failed: ${response.status}`);
+			const errorText = await response.text();
+			console.error(`Download API failed: ${response.status}`, errorText);
+			throw new Error(
+				`Download API failed: ${response.status} - ${errorText}`
+			);
 		}
 
 		const data = await response.json();
 
 		if (data.downloadUrl) {
+			console.log("Opening download URL in new tab");
 			// Open the signed URL in a new tab for download
 			window.open(data.downloadUrl, "_blank");
 		} else {
-			throw new Error("No download URL received");
+			throw new Error("No download URL received from API");
 		}
 	} catch (error) {
-		console.error("Download failed:", error);
-		// Fallback: try to open the direct URL
-		const directUrl = convertGcsUrlDirect(url);
-		if (directUrl) {
-			window.open(directUrl, "_blank");
+		console.error("Download failed, trying fallback:", error);
+
+		// Fallback 1: Try the media API route
+		try {
+			let filePath = "";
+			if (url.startsWith("gs://")) {
+				filePath = url.replace("gs://", "").replace(/^[^/]+\//, "");
+			} else if (url.startsWith("https://storage.googleapis.com/")) {
+				filePath = url
+					.replace("https://storage.googleapis.com/", "")
+					.replace(/^[^/]+\//, "");
+			} else {
+				filePath = url;
+			}
+
+			const mediaUrl = `/api/media/${filePath}`;
+			console.log("Trying media API fallback:", mediaUrl);
+			window.open(mediaUrl, "_blank");
+			return;
+		} catch (fallbackError) {
+			console.error("Media API fallback failed:", fallbackError);
 		}
+
+		// Fallback 2: Try direct GCS URL
+		try {
+			const directUrl = convertGcsUrlDirect(url);
+			if (directUrl) {
+				console.log("Trying direct GCS URL fallback:", directUrl);
+				window.open(directUrl, "_blank");
+				return;
+			}
+		} catch (directError) {
+			console.error("Direct URL fallback failed:", directError);
+		}
+
+		// If all else fails, show an error message
+		alert(
+			`Failed to download file: ${
+				filename || "Unknown file"
+			}. Please contact support.`
+		);
 	}
 }
 

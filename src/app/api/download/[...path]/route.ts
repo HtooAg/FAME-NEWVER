@@ -46,6 +46,7 @@ export async function GET(
 			responseDisposition: `attachment; filename="${
 				metadata.name || "download"
 			}"`,
+			version: "v4",
 		});
 
 		// Return the signed URL as JSON so we can handle it properly

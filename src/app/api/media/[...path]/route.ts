@@ -43,6 +43,7 @@ export async function GET(
 		const [signedUrl] = await file.getSignedUrl({
 			action: "read",
 			expires: Date.now() + 60 * 60 * 1000, // 1 hour
+			version: "v4",
 		});
 
 		// Return the signed URL for direct access with proper CORS headers
