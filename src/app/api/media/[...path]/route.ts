@@ -62,7 +62,7 @@ export async function GET(
 		// If GCS fails, try to return a direct storage URL as fallback
 		try {
 			const filePath = params.path.join("/");
-			const directUrl = `https://storage.googleapis.com/${bucketName}/${filePath}`;
+			const directUrl = `https://storage.cloud.google.com/${bucketName}/${filePath}`;
 			return NextResponse.redirect(directUrl);
 		} catch (fallbackError) {
 			console.error("Fallback URL generation failed:", fallbackError);

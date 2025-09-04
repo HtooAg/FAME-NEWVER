@@ -47,11 +47,18 @@ export async function GET(
 				metadata.name || "download"
 			}"`,
 			version: "v4",
+			virtualHostedStyle: true, // Use virtual hosted-style URLs (storage.cloud.google.com)
 		});
+
+		// Use the signed URL directly (should already be storage.cloud.google.com)
+		const correctedUrl = signedUrl;
+
+		console.log("Original signed URL:", signedUrl);
+		console.log("Using cloud.google.com URL:", correctedUrl);
 
 		// Return the signed URL as JSON so we can handle it properly
 		return NextResponse.json({
-			downloadUrl: signedUrl,
+			downloadUrl: correctedUrl,
 			filename: metadata.name || "download",
 			contentType: metadata.contentType || "application/octet-stream",
 			size: metadata.size || 0,

@@ -40,7 +40,7 @@ export function convertGcsUrlDirect(url: string): string {
 	// Convert gs:// URL to direct HTTP URL
 	if (url.startsWith("gs://")) {
 		const path = url.replace("gs://", "");
-		return `https://storage.googleapis.com/${path}`;
+		return `https://storage.cloud.google.com/${path}`;
 	}
 
 	return url;
@@ -189,9 +189,9 @@ export async function downloadFile(
 		let filePath = "";
 		if (url.startsWith("gs://")) {
 			filePath = url.replace("gs://", "").replace(/^[^/]+\//, ""); // Remove bucket name
-		} else if (url.startsWith("https://storage.googleapis.com/")) {
+		} else if (url.startsWith("https://storage.cloud.google.com/")) {
 			filePath = url
-				.replace("https://storage.googleapis.com/", "")
+				.replace("https://storage.cloud.google.com/", "")
 				.replace(/^[^/]+\//, "");
 		} else {
 			// If it's already a path, use it directly
@@ -201,7 +201,9 @@ export async function downloadFile(
 		console.log("Attempting to download file:", filePath);
 
 		// Call our download API to get a signed URL
-		const response = await fetch(`/api/download/${filePath}`);
+		const response = await fetch(
+			`/api/download/${encodeURIComponent(filePath)}`
+		);
 
 		if (!response.ok) {
 			const errorText = await response.text();
@@ -214,9 +216,20 @@ export async function downloadFile(
 		const data = await response.json();
 
 		if (data.downloadUrl) {
-			console.log("Opening download URL in new tab");
-			// Open the signed URL in a new tab for download
-			window.open(data.downloadUrl, "_blank");
+			console.log("Using signed download URL:", data.downloadUrl);
+
+			// Use the download URL directly (should already be storage.cloud.google.com)
+			let downloadUrl = data.downloadUrl;
+			console.log("Using download URL:", downloadUrl);
+
+			// Create a download link with the signed URL
+			const link = document.createElement("a");
+			link.href = downloadUrl;
+			link.download = filename || data.filename || "download";
+			link.target = "_blank"; // Open in new tab to handle authentication
+			document.body.appendChild(link);
+			link.click();
+			document.body.removeChild(link);
 		} else {
 			throw new Error("No download URL received from API");
 		}
@@ -228,9 +241,9 @@ export async function downloadFile(
 			let filePath = "";
 			if (url.startsWith("gs://")) {
 				filePath = url.replace("gs://", "").replace(/^[^/]+\//, "");
-			} else if (url.startsWith("https://storage.googleapis.com/")) {
+			} else if (url.startsWith("https://storage.cloud.google.com/")) {
 				filePath = url
-					.replace("https://storage.googleapis.com/", "")
+					.replace("https://storage.cloud.google.com/", "")
 					.replace(/^[^/]+\//, "");
 			} else {
 				filePath = url;

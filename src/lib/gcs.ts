@@ -386,7 +386,7 @@ export const getSignedUrl = async (
 	expires?: Date
 ) => {
 	// For now, return a placeholder URL
-	return `https://storage.googleapis.com/${bucketName}/${filePath}`;
+	return `https://storage.cloud.google.com/${bucketName}/${filePath}`;
 };
 
 // Generate unique file ID
