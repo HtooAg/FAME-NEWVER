@@ -1,5 +1,10 @@
 import bcrypt from "bcryptjs";
-import { getUserByEmail, getUserById, updateUser } from "./data-access";
+import {
+	getUserByEmail,
+	getUserById,
+	updateUser,
+	getPendingStageManagers,
+} from "./data-access";
 import { User, SessionData, UserRole, UserStatus } from "@/types";
 
 // Password hashing utilities
@@ -40,10 +45,10 @@ export async function validateUserCredentials(
 			return null;
 		}
 
-		// Check if user is active
-		if (user.status !== "active") {
+		// Allow active and pending users to login
+		if (user.status !== "active" && user.status !== "pending") {
 			console.log(
-				`User account not active: ${email}, status: ${user.status}`
+				`User account not accessible: ${email}, status: ${user.status}`
 			);
 			return null;
 		}

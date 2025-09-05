@@ -53,27 +53,9 @@ const withAuthWrapper = async (request: NextRequest, session: any) => {
 			status: session.status,
 		});
 
-		// Check if user is a stage manager
-		if (session.role !== "stage_manager") {
-			console.log("Access denied - not a stage manager:", session.role);
-			return NextResponse.json<APIResponse>(
-				{
-					success: false,
-					error: {
-						code: "FORBIDDEN",
-						message: "Access denied. Stage manager role required.",
-					},
-				},
-				{ status: 403 }
-			);
-		}
-
+		// Get fresh user data first to check current role and status
 		console.log("Fetching user data for userId:", session.userId);
-
-		// Get user data using the data access layer
 		const user = await getUserById(session.userId);
-
-		console.log("User data retrieved:", user ? "Found" : "Not found");
 
 		if (!user) {
 			console.log("User not found in database");
@@ -88,6 +70,38 @@ const withAuthWrapper = async (request: NextRequest, session: any) => {
 				{ status: 404 }
 			);
 		}
+
+		// Check if user is a stage manager (use fresh data from database)
+		if (user.role !== "stage_manager") {
+			console.log("Access denied - not a stage manager:", user.role);
+			return NextResponse.json<APIResponse>(
+				{
+					success: false,
+					error: {
+						code: "FORBIDDEN",
+						message: "Access denied. Stage manager role required.",
+					},
+				},
+				{ status: 403 }
+			);
+		}
+
+		// Check if user status allows access (active or pending)
+		if (user.status !== "active" && user.status !== "pending") {
+			console.log("Access denied - invalid status:", user.status);
+			return NextResponse.json<APIResponse>(
+				{
+					success: false,
+					error: {
+						code: "FORBIDDEN",
+						message: `Account status: ${user.status}. Please contact support.`,
+					},
+				},
+				{ status: 403 }
+			);
+		}
+
+		console.log("User data retrieved:", user ? "Found" : "Not found");
 
 		// Return user profile without sensitive data
 		const userProfile = {

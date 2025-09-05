@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,44 @@ export default function LoginPage() {
 	const [showPassword, setShowPassword] = useState(false);
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState("");
+	const [checkingSession, setCheckingSession] = useState(true);
+
+	// Check if user is already logged in
+	useEffect(() => {
+		const checkSession = async () => {
+			try {
+				const response = await fetch("/api/auth/me");
+				if (response.ok) {
+					const result = await response.json();
+					if (result.success && result.data) {
+						// User is already logged in, redirect based on role
+						const { role, status } = result.data;
+
+						if (status === "pending") {
+							router.push("/stage-manager-pending");
+						} else if (role === "super_admin") {
+							router.push("/super-admin");
+						} else if (role === "stage_manager") {
+							router.push("/stage-manager");
+						} else if (role === "artist") {
+							router.push("/artist");
+						} else if (role === "dj") {
+							router.push("/dj");
+						} else {
+							router.push("/");
+						}
+						return;
+					}
+				}
+			} catch (error) {
+				console.log("No active session found");
+			} finally {
+				setCheckingSession(false);
+			}
+		};
+
+		checkSession();
+	}, [router]);
 
 	const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
 		const { name, value } = e.target;
@@ -66,6 +104,18 @@ export default function LoginPage() {
 			setLoading(false);
 		}
 	};
+
+	// Show loading while checking session
+	if (checkingSession) {
+		return (
+			<div className="min-h-screen bg-gradient-to-br from-purple-900 to-pink-900 text-white flex items-center justify-center p-4">
+				<div className="text-center">
+					<div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-4"></div>
+					<p className="text-gray-400">Checking session...</p>
+				</div>
+			</div>
+		);
+	}
 
 	return (
 		<div className="min-h-screen bg-gradient-to-br from-purple-900 to-pink-900 text-white flex items-center justify-center p-4">

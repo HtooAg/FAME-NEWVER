@@ -34,7 +34,7 @@ const PUBLIC_ROUTES = [
 
 // Status-specific redirect routes
 const STATUS_ROUTES: Record<UserStatus, string> = {
-	pending: "/account-pending",
+	pending: "/stage-manager-pending", // Updated for stage managers
 	suspended: "/account-suspended",
 	deactivated: "/account-deactivated",
 	active: "", // No redirect needed for active users
@@ -110,6 +110,21 @@ export function middleware(request: NextRequest) {
 
 	// Check user status and redirect if necessary
 	if (session.status !== "active") {
+		// Special handling for stage managers with pending status
+		if (session.status === "pending" && session.role === "stage_manager") {
+			// Allow access to both pending page and dashboard
+			// The dashboard will handle session refresh and redirect if needed
+			if (
+				pathname !== "/stage-manager-pending" &&
+				pathname !== "/stage-manager"
+			) {
+				return NextResponse.redirect(
+					new URL("/stage-manager-pending", request.url)
+				);
+			}
+			return NextResponse.next();
+		}
+
 		const statusRedirect = STATUS_ROUTES[session.status];
 		if (statusRedirect && pathname !== statusRedirect) {
 			return NextResponse.redirect(new URL(statusRedirect, request.url));

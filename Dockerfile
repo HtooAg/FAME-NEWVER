@@ -36,9 +36,23 @@ COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/public ./public
+COPY --from=builder /app/server.js ./server.js
+COPY --from=builder /app/src ./src
+COPY --from=builder /app/next.config.js ./next.config.js
 
-# Expose the port
-EXPOSE 3000
+# Create a non-root user
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+
+# Change ownership of the app directory
+RUN chown -R nextjs:nodejs /app
+USER nextjs
+
+# Expose the port (Cloud Run will set PORT environment variable)
+EXPOSE 8080
+
+# Set default PORT for Cloud Run
+ENV PORT=8080
 
 # Start the application
 CMD ["npm", "start"]

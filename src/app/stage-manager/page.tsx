@@ -10,6 +10,7 @@ import {
 	CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
 	Calendar,
 	LogOut,
@@ -22,14 +23,69 @@ import Image from "next/image";
 import Link from "next/link";
 import { Event } from "@/lib/types/event";
 import { motion } from "framer-motion";
+import { useWebSocket } from "@/hooks/useWebSocket";
+import { useRouter } from "next/navigation";
 
 export default function StageManagerDashboard() {
 	const [user, setUser] = useState<any>(null);
 	const [events, setEvents] = useState<Event[]>([]);
 	const [loading, setLoading] = useState(true);
+	const [alert, setAlert] = useState<{
+		type: "success" | "error" | "info";
+		message: string;
+	} | null>(null);
+	const router = useRouter();
+
+	// WebSocket for real-time notifications
+	useWebSocket({
+		userId: user?.id,
+		role: "stage_manager",
+		onAdminNotification: (data) => {
+			if (
+				data.action === "deactivate" ||
+				data.action === "delete" ||
+				data.action === "changeCredentials"
+			) {
+				setAlert({
+					type: "error",
+					message: data.message,
+				});
+
+				// Redirect to login after showing the message
+				setTimeout(() => {
+					router.push("/login");
+				}, 3000);
+			}
+		},
+	});
 
 	useEffect(() => {
-		fetchDashboardData();
+		// Check if user session needs to be refreshed
+		const refreshSessionIfNeeded = async () => {
+			try {
+				const response = await fetch("/api/auth/refresh-session", {
+					method: "POST",
+				});
+				if (response.ok) {
+					const result = await response.json();
+					if (
+						result.success &&
+						result.data.user.status === "pending"
+					) {
+						// User is still pending, redirect to pending page
+						router.push("/stage-manager-pending");
+						return;
+					}
+				}
+			} catch (error) {
+				console.error("Failed to refresh session:", error);
+			}
+
+			// Proceed with normal dashboard loading
+			fetchDashboardData();
+		};
+
+		refreshSessionIfNeeded();
 	}, []);
 
 	const fetchDashboardData = async () => {
@@ -174,6 +230,31 @@ export default function StageManagerDashboard() {
 			</header>
 
 			<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+				{/* Alert for admin notifications */}
+				{alert && (
+					<Alert
+						className={`mb-6 ${
+							alert.type === "success"
+								? "border-green-500 bg-green-50"
+								: alert.type === "error"
+								? "border-red-500 bg-red-50"
+								: "border-blue-500 bg-blue-50"
+						}`}
+					>
+						<AlertDescription
+							className={`${
+								alert.type === "success"
+									? "text-green-700"
+									: alert.type === "error"
+									? "text-red-700"
+									: "text-blue-700"
+							}`}
+						>
+							{alert.message}
+						</AlertDescription>
+					</Alert>
+				)}
+
 				{/* Welcome Section */}
 				<motion.div
 					className="mb-8"

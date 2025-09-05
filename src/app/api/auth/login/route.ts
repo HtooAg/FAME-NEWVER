@@ -68,6 +68,25 @@ export async function POST(request: NextRequest) {
 		}
 
 		if (user.status === "pending") {
+			// For stage managers, allow login but redirect to pending page
+			if (user.role === "stage_manager") {
+				const sessionData = createSessionData(user);
+				const response = NextResponse.json<APIResponse>({
+					success: true,
+					data: {
+						user: {
+							id: user.id,
+							email: user.email,
+							role: user.role,
+							status: user.status,
+							profile: user.profile,
+						},
+						redirectUrl: "/stage-manager-pending",
+					},
+				});
+				return createSessionResponse(sessionData, response);
+			}
+
 			return NextResponse.json<APIResponse>(
 				{
 					success: false,

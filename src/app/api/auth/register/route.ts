@@ -83,6 +83,35 @@ export async function POST(request: NextRequest) {
 			`New stage manager registered (pending): ${userData.email}`
 		);
 
+		// Send real-time notification to all super admins
+		try {
+			if (global.io) {
+				global.io.to("role_super_admin").emit("new_registration", {
+					type: "stage_manager_registration",
+					user: {
+						id: userData.id,
+						email: userData.email,
+						firstName: userData.profile.firstName,
+						lastName: userData.profile.lastName,
+						phone: userData.profile.phone,
+						createdAt: userData.createdAt,
+					},
+					message: `New stage manager registration: ${userData.profile.firstName} ${userData.profile.lastName}`,
+					timestamp: new Date().toISOString(),
+				});
+				console.log(
+					`Real-time notification sent to admins for new registration: ${userData.email}`
+				);
+			} else {
+				console.log(
+					"WebSocket not available, skipping real-time notification"
+				);
+			}
+		} catch (error) {
+			console.error("Error sending WebSocket notification:", error);
+			// Continue without WebSocket - don't fail the registration
+		}
+
 		return NextResponse.json<APIResponse>({
 			success: true,
 			data: {

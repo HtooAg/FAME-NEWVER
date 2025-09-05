@@ -78,27 +78,65 @@ class DataAccess {
 			}
 		}
 
+		// Also include pending stage manager registrations
+		const pendingStageManagers = await this.readJson<User[]>(
+			"registrations/stage-managers/pending.json"
+		);
+		if (pendingStageManagers) {
+			users.push(...pendingStageManagers);
+		}
+
 		return users;
 	}
 
 	async getUserById(id: string): Promise<User | null> {
+		console.log("[DATA-ACCESS] getUserById called with ID:", id);
 		const users = await this.getAllUsers();
-		return users.find((user) => user.id === id) || null;
+		console.log("[DATA-ACCESS] Total users found:", users.length);
+		console.log(
+			"[DATA-ACCESS] User IDs:",
+			users.map((u) => u.id)
+		);
+		const user = users.find((user) => user.id === id) || null;
+		console.log(
+			"[DATA-ACCESS] Found user:",
+			user
+				? { id: user.id, email: user.email, status: user.status }
+				: null
+		);
+		return user;
 	}
 
 	async getUserByEmail(email: string): Promise<User | null> {
 		// First check in super admin users
-		const superAdmins = await this.readJson<User[]>("users/super_admin/users.json");
+		const superAdmins = await this.readJson<User[]>(
+			"users/super_admin/users.json"
+		);
 		if (superAdmins) {
-			const superAdmin = superAdmins.find(user => user.email === email);
+			const superAdmin = superAdmins.find((user) => user.email === email);
 			if (superAdmin) return superAdmin;
 		}
 
 		// Then check in stage managers
-		const stageManagers = await this.readJson<User[]>("users/stage_manager/users.json");
+		const stageManagers = await this.readJson<User[]>(
+			"users/stage_manager/users.json"
+		);
 		if (stageManagers) {
-			const stageManager = stageManagers.find(user => user.email === email);
+			const stageManager = stageManagers.find(
+				(user) => user.email === email
+			);
 			if (stageManager) return stageManager;
+		}
+
+		// Also check pending stage manager registrations
+		const pendingStageManagers = await this.readJson<User[]>(
+			"registrations/stage-managers/pending.json"
+		);
+		if (pendingStageManagers) {
+			const pendingStageManager = pendingStageManagers.find(
+				(user) => user.email === email
+			);
+			if (pendingStageManager) return pendingStageManager;
 		}
 
 		return null;
@@ -119,29 +157,128 @@ class DataAccess {
 	}
 
 	async updateUser(user: User): Promise<void> {
+		console.log("[DATA-ACCESS] updateUser called for:", {
+			id: user.id,
+			role: user.role,
+			status: user.status,
+		});
+
+		// First try to update in the regular users collection
 		const rolePath = `users/${user.role}/users.json`;
+		console.log("[DATA-ACCESS] Checking role path:", rolePath);
 		const existingUsers = (await this.readJson<User[]>(rolePath)) || [];
+		console.log(
+			"[DATA-ACCESS] Found users in role collection:",
+			existingUsers.length
+		);
 
 		const userIndex = existingUsers.findIndex((u) => u.id === user.id);
-		if (userIndex === -1) {
-			throw new Error("User not found");
+		console.log("[DATA-ACCESS] User index in role collection:", userIndex);
+
+		if (userIndex !== -1) {
+			existingUsers[userIndex] = user;
+			await this.writeJson(rolePath, existingUsers);
+			console.log(
+				"[DATA-ACCESS] User updated in role collection successfully"
+			);
+			return;
 		}
 
-		existingUsers[userIndex] = user;
-		await this.writeJson(rolePath, existingUsers);
+		// If not found in regular users, check pending registrations for stage managers
+		if (user.role === "stage_manager") {
+			const pendingPath = "registrations/stage-managers/pending.json";
+			console.log("[DATA-ACCESS] Checking pending path:", pendingPath);
+			const pendingUsers =
+				(await this.readJson<User[]>(pendingPath)) || [];
+			console.log(
+				"[DATA-ACCESS] Found users in pending collection:",
+				pendingUsers.length
+			);
+
+			const pendingIndex = pendingUsers.findIndex(
+				(u) => u.id === user.id
+			);
+			console.log(
+				"[DATA-ACCESS] User index in pending collection:",
+				pendingIndex
+			);
+
+			if (pendingIndex !== -1) {
+				pendingUsers[pendingIndex] = user;
+				await this.writeJson(pendingPath, pendingUsers);
+				console.log(
+					"[DATA-ACCESS] User updated in pending collection successfully"
+				);
+				return;
+			}
+		}
+
+		console.error(
+			"[DATA-ACCESS] User not found in any collection:",
+			user.id
+		);
+		throw new Error("User not found");
 	}
 
-	async deleteUser(userId: string): Promise<void> {
+	async deactivateUser(userId: string): Promise<void> {
 		const user = await this.getUserById(userId);
 		if (!user) {
 			throw new Error("User not found");
 		}
 
+		const updatedUser = {
+			...user,
+			status: "deactivated" as const,
+		};
+
+		await this.updateUser(updatedUser);
+	}
+
+	async changeUserPassword(
+		userId: string,
+		newPasswordHash: string
+	): Promise<void> {
+		const user = await this.getUserById(userId);
+		if (!user) {
+			throw new Error("User not found");
+		}
+
+		const updatedUser = {
+			...user,
+			passwordHash: newPasswordHash,
+		};
+
+		await this.updateUser(updatedUser);
+	}
+
+	async deleteUser(userId: string): Promise<void> {
+		console.log("[DATA-ACCESS] deleteUser called for:", userId);
+		const user = await this.getUserById(userId);
+		if (!user) {
+			console.error("[DATA-ACCESS] User not found for deletion:", userId);
+			throw new Error("User not found");
+		}
+
+		console.log("[DATA-ACCESS] Found user for deletion:", {
+			id: user.id,
+			role: user.role,
+			status: user.status,
+		});
 		const rolePath = `users/${user.role}/users.json`;
+		console.log("[DATA-ACCESS] Deleting from role path:", rolePath);
 		const existingUsers = (await this.readJson<User[]>(rolePath)) || [];
+		console.log(
+			"[DATA-ACCESS] Users before deletion:",
+			existingUsers.length
+		);
 
 		const filteredUsers = existingUsers.filter((u) => u.id !== userId);
+		console.log(
+			"[DATA-ACCESS] Users after deletion:",
+			filteredUsers.length
+		);
 		await this.writeJson(rolePath, filteredUsers);
+		console.log("[DATA-ACCESS] User deleted successfully from:", rolePath);
 	}
 
 	// Stage Manager Registration Management
@@ -154,6 +291,12 @@ class DataAccess {
 	}
 
 	async addPendingStageManager(user: User): Promise<void> {
+		// Check if user already exists anywhere in the system
+		const existingUser = await this.getUserByEmail(user.email);
+		if (existingUser) {
+			throw new Error("User with this email already exists");
+		}
+
 		const registrations =
 			(await this.readJson<User[]>(
 				"registrations/stage-managers/pending.json"
