@@ -39,26 +39,14 @@ export async function GET(
 		// Get file metadata
 		const [metadata] = await file.getMetadata();
 
-		// Create a signed URL for download (valid for 1 hour)
-		const [signedUrl] = await file.getSignedUrl({
-			action: "read",
-			expires: Date.now() + 60 * 60 * 1000, // 1 hour
-			responseDisposition: `attachment; filename="${
-				metadata.name || "download"
-			}"`,
-			version: "v4",
-			virtualHostedStyle: true, // Use virtual hosted-style URLs (storage.cloud.google.com)
-		});
+		// Use public URL instead of signed URL to avoid authentication issues
+		const publicUrl = `https://storage.cloud.google.com/${bucketName}/${filePath}`;
 
-		// Use the signed URL directly (should already be storage.cloud.google.com)
-		const correctedUrl = signedUrl;
+		console.log("Using public download URL:", publicUrl);
 
-		console.log("Original signed URL:", signedUrl);
-		console.log("Using cloud.google.com URL:", correctedUrl);
-
-		// Return the signed URL as JSON so we can handle it properly
+		// Return the public URL as JSON
 		return NextResponse.json({
-			downloadUrl: correctedUrl,
+			downloadUrl: publicUrl,
 			filename: metadata.name || "download",
 			contentType: metadata.contentType || "application/octet-stream",
 			size: metadata.size || 0,

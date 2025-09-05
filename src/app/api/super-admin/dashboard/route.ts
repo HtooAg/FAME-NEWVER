@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionFromRequest } from "@/lib/session";
 import { APIResponse } from "@/types";
-import { getAllUsers, getPendingUsers, getStageManagers } from "@/lib/gcs";
+import {
+	getAllUsers,
+	getPendingUsers,
+	getStageManagers,
+	approveUser,
+} from "@/lib/gcs";
 
 export async function GET(request: NextRequest) {
 	try {

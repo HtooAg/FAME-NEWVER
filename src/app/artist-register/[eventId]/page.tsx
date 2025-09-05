@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
+import ClientWrapper from "@/components/ClientWrapper";
 import { Button } from "@/components/ui/button";
 import {
 	Card,
@@ -2346,5 +2347,9 @@ function ArtistRegistrationForm() {
 }
 
 export default function ArtistRegistration() {
-	return <ArtistRegistrationForm />;
+	return (
+		<ClientWrapper>
+			<ArtistRegistrationForm />
+		</ClientWrapper>
+	);
 }

@@ -10,8 +10,8 @@ export default function UnauthorizedPage() {
 	const router = useRouter();
 
 	return (
-		<div className="min-h-screen bg-black text-white flex items-center justify-center px-4">
-			<Card className="w-full max-w-md bg-gray-900 border-gray-800">
+		<div className="min-h-screen bg-gradient-to-br from-purple-900 to-pink-900 text-white flex items-center justify-center px-4">
+			<Card className="w-full max-w-md bg-purple-800/50 border-purple-600">
 				<CardHeader className="text-center">
 					<div className="flex justify-center mb-4">
 						<FameLogo width={60} height={60} />

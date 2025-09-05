@@ -68,7 +68,7 @@ export default function LoginPage() {
 	};
 
 	return (
-		<div className="min-h-screen bg-black text-white flex items-center justify-center p-4">
+		<div className="min-h-screen bg-gradient-to-br from-purple-900 to-pink-900 text-white flex items-center justify-center p-4">
 			<div className="w-full max-w-md space-y-8">
 				{/* Logo and Header */}
 				<div className="text-center">
@@ -84,7 +84,7 @@ export default function LoginPage() {
 				</div>
 
 				{/* Login Form */}
-				<Card className="bg-gray-900 border-gray-800">
+				<Card className="bg-purple-800/50 border-purple-600">
 					<CardHeader>
 						<CardTitle className="text-white text-center">
 							Sign In

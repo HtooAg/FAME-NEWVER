@@ -3,20 +3,20 @@
 @tailwind utilities;
 
 :root {
-	--background: #ffffff;
-	--foreground: #0f172a;
+	--background: #faf5ff;
+	--foreground: #1a202c;
 	--card: #ffffff;
-	--card-foreground: #0f172a;
+	--card-foreground: #1a202c;
 	--popover: #ffffff;
-	--popover-foreground: #0f172a;
+	--popover-foreground: #1a202c;
 	--primary: #a855f7;
 	--primary-foreground: #ffffff;
-	--secondary: #f8fafc;
-	--secondary-foreground: #0f172a;
-	--muted: #f1f5f9;
-	--muted-foreground: #64748b;
-	--accent: #f1f5f9;
-	--accent-foreground: #0f172a;
+	--secondary: #f3e8ff;
+	--secondary-foreground: #1a202c;
+	--muted: #f3e8ff;
+	--muted-foreground: #6b46c1;
+	--accent: #fdf4ff;
+	--accent-foreground: #1a202c;
 	--destructive: #ef4444;
 	--destructive-foreground: #ffffff;
 	--border: #e2e8f0;
@@ -25,63 +25,51 @@
 	--radius: 0.5rem;
 }
 
-/* Force light mode - disable dark mode completely */
+/* Dark mode with purple/magenta theme - no black backgrounds */
 @media (prefers-color-scheme: dark) {
 	:root {
-		--background: #ffffff !important;
-		--foreground: #1a202c !important;
-		--card: #ffffff !important;
-		--card-foreground: #1a202c !important;
-		--popover: #ffffff !important;
-		--popover-foreground: #1a202c !important;
-		--primary: #a855f7 !important;
-		--primary-foreground: #ffffff !important;
-		--secondary: #f7fafc !important;
-		--secondary-foreground: #1a202c !important;
-		--muted: #edf2f7 !important;
-		--muted-foreground: #4a5568 !important;
-		--accent: #edf2f7 !important;
-		--accent-foreground: #1a202c !important;
-		--destructive: #e53e3e !important;
-		--destructive-foreground: #ffffff !important;
-		--border: #e2e8f0 !important;
-		--input: #e2e8f0 !important;
-		--ring: #a855f7 !important;
+		--background: #2d1b69;
+		--foreground: #faf5ff;
+		--card: #4c1d95;
+		--card-foreground: #faf5ff;
+		--popover: #4c1d95;
+		--popover-foreground: #faf5ff;
+		--primary: #c084fc;
+		--primary-foreground: #ffffff;
+		--secondary: #5b21b6;
+		--secondary-foreground: #faf5ff;
+		--muted: #6b46c1;
+		--muted-foreground: #c4b5fd;
+		--accent: #7c3aed;
+		--accent-foreground: #faf5ff;
+		--destructive: #ef4444;
+		--destructive-foreground: #ffffff;
+		--border: #8b5cf6;
+		--input: #6b46c1;
+		--ring: #c084fc;
 	}
 }
 
 body {
-	background: #ffffff !important;
-	color: #1a202c !important;
 	font-family: Arial, Helvetica, sans-serif;
 }
 
-/* Force light mode for all elements */
-* {
-	color-scheme: light !important;
+/* Ensure text visibility on purple backgrounds */
+.text-white {
+	color: #ffffff !important;
 }
 
-/* Ensure all text is visible */
-h1,
-h2,
-h3,
-h4,
-h5,
-h6,
-p,
-span,
-div,
-label,
+/* Ensure buttons and interactive elements are visible */
 button {
-	color: #1a202c !important;
+	color: inherit;
 }
 
-/* Override any dark backgrounds */
+/* Override any problematic dark backgrounds */
 .bg-black,
 .bg-gray-900,
 .bg-gray-800 {
-	background-color: #ffffff !important;
-	color: #1a202c !important;
+	background: linear-gradient(135deg, #6b46c1, #9333ea) !important;
+	color: #ffffff !important;
 }
 
 /* Custom FAME Animations */

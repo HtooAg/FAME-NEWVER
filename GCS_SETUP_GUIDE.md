@@ -40,26 +40,78 @@ gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
     --role="roles/storage.admin"
 ```
 
-### 3. Configure Bucket Permissions
+### 3. Configure Bucket for Public Access (Required for Downloads)
 
-#### Option A: Make Bucket Publicly Readable (Easier but less secure)
+To allow all users to download and view media files without authentication, you need to make your bucket publicly readable:
 
-```bash
-# Replace YOUR_BUCKET_NAME
-gsutil iam ch allUsers:objectViewer gs://YOUR_BUCKET_NAME
-```
-
-#### Option B: Configure Bucket for Signed URLs (More secure)
+#### Option A: Using Google Cloud Console (Recommended)
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
 2. Navigate to **Cloud Storage** > **Buckets**
 3. Click on your bucket name
 4. Go to **Permissions** tab
-5. Click **Add Principal**
-6. Add your service account email
-7. Assign role: `Storage Object Admin`
+5. Click **Grant Access**
+6. In "New principals" field, enter: `allUsers`
+7. In "Select a role" dropdown, choose: `Storage Object Viewer`
+8. Click **Save**
+9. Click **Allow Public Access** when prompted
 
-### 4. Update Your Environment Variables
+#### Option B: Using gsutil CLI
+
+```bash
+# Replace YOUR_BUCKET_NAME with your actual bucket name
+gsutil iam ch allUsers:objectViewer gs://YOUR_BUCKET_NAME
+
+# Also remove any "Prevent public access" policy
+gsutil bucketpolicyonly set off gs://YOUR_BUCKET_NAME
+```
+
+#### Option C: Using gcloud CLI (Recommended for Command Line)
+
+```bash
+# Replace YOUR_BUCKET_NAME with your actual bucket name
+gcloud storage buckets add-iam-policy-binding gs://YOUR_BUCKET_NAME \
+    --member=allUsers \
+    --role=roles/storage.objectViewer
+
+# Remove uniform bucket-level access if needed
+gcloud storage buckets update gs://YOUR_BUCKET_NAME --no-uniform-bucket-level-access
+```
+
+**Important:** After making the bucket public, your files will be accessible to anyone with the URL. This is necessary for downloads to work without authentication.
+
+### 4. Configure CORS for Web Access (Optional but Recommended)
+
+To allow web browsers to access your files directly, configure CORS:
+
+1. Create a file called `cors.json`:
+
+```json
+[
+	{
+		"origin": ["*"],
+		"method": ["GET", "HEAD"],
+		"responseHeader": ["Content-Type", "Access-Control-Allow-Origin"],
+		"maxAgeSeconds": 3600
+	}
+]
+```
+
+2. Apply the CORS configuration:
+
+**Using gsutil:**
+
+```bash
+gsutil cors set cors.json gs://YOUR_BUCKET_NAME
+```
+
+**Using gcloud (alternative):**
+
+```bash
+gcloud storage buckets update gs://YOUR_BUCKET_NAME --cors-file=cors.json
+```
+
+### 5. Update Your Environment Variables
 
 Make sure these are set correctly in your `.env.local`:
 
@@ -69,7 +121,7 @@ GOOGLE_CLOUD_BUCKET_NAME=your-bucket-name
 GOOGLE_CLOUD_KEY_FILE=path/to/your/service-account-key.json
 ```
 
-### 5. Verify Service Account Key File
+### 6. Verify Service Account Key File
 
 Make sure your service account key file:
 
@@ -78,7 +130,7 @@ Make sure your service account key file:
 3. Is valid JSON format
 4. Contains the correct project_id
 
-### 6. Test the Setup
+### 7. Test the Setup
 
 You can test if your service account has the right permissions:
 
@@ -93,7 +145,7 @@ echo "test" | gsutil cp - gs://YOUR_BUCKET_NAME/test.txt
 gsutil cp gs://YOUR_BUCKET_NAME/test.txt ./test-download.txt
 ```
 
-### 7. Alternative: Use Application Default Credentials
+### 8. Alternative: Use Application Default Credentials
 
 If you're running on Google Cloud (App Engine, Cloud Run, etc.), you can use Application Default Credentials instead of a service account key file:
 
@@ -107,7 +159,7 @@ const storage = new Storage({
 });
 ```
 
-### 8. Debugging Steps
+### 9. Debugging Steps
 
 If you're still having issues:
 
@@ -117,7 +169,7 @@ If you're still having issues:
 4. **Check if your bucket exists** and is in the right project
 5. **Verify your project ID** matches what's in your service account key
 
-### 9. Security Best Practices
+### 10. Security Best Practices
 
 -   Don't make your entire bucket public
 -   Use signed URLs for temporary access
@@ -125,9 +177,9 @@ If you're still having issues:
 -   Use least-privilege principle (only grant necessary permissions)
 -   Consider using Cloud IAM Conditions for more granular access control
 
-## Quick Fix Commands
+## Quick Fix Commands for Public Access
 
-If you want to quickly fix the permissions (replace with your actual values):
+If you want to quickly make your bucket publicly accessible for downloads (replace with your actual values):
 
 ```bash
 # Set your variables
@@ -135,13 +187,21 @@ PROJECT_ID="your-project-id"
 SERVICE_ACCOUNT_EMAIL="your-service-account@your-project.iam.gserviceaccount.com"
 BUCKET_NAME="your-bucket-name"
 
-# Add IAM permissions
+# Add IAM permissions for service account (for uploads)
 gcloud projects add-iam-policy-binding $PROJECT_ID \
     --member="serviceAccount:$SERVICE_ACCOUNT_EMAIL" \
     --role="roles/storage.objectAdmin"
 
-# Configure bucket permissions
-gsutil iam ch serviceAccount:$SERVICE_ACCOUNT_EMAIL:objectAdmin gs://$BUCKET_NAME
+# Make bucket publicly readable (for downloads)
+gsutil iam ch allUsers:objectViewer gs://$BUCKET_NAME
+
+# Remove public access prevention (if enabled)
+gsutil bucketpolicyonly set off gs://$BUCKET_NAME
+
+# Configure CORS (optional)
+echo '[{"origin":["*"],"method":["GET","HEAD"],"responseHeader":["Content-Type","Access-Control-Allow-Origin"],"maxAgeSeconds":3600}]' > cors.json
+gsutil cors set cors.json gs://$BUCKET_NAME
+rm cors.json
 ```
 
 After making these changes, restart your application and try downloading again.

@@ -39,15 +39,11 @@ export async function GET(
 		// Get file metadata
 		const [metadata] = await file.getMetadata();
 
-		// Create a signed URL for direct access (valid for 1 hour)
-		const [signedUrl] = await file.getSignedUrl({
-			action: "read",
-			expires: Date.now() + 60 * 60 * 1000, // 1 hour
-			version: "v4",
-		});
+		// Use public URL for direct access to avoid authentication issues
+		const publicUrl = `https://storage.cloud.google.com/${bucketName}/${filePath}`;
 
-		// Return the signed URL for direct access with proper CORS headers
-		const response = NextResponse.redirect(signedUrl);
+		// Return the public URL for direct access with proper CORS headers
+		const response = NextResponse.redirect(publicUrl);
 		response.headers.set("Access-Control-Allow-Origin", "*");
 		response.headers.set(
 			"Access-Control-Allow-Methods",

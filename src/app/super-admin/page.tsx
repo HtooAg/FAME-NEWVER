@@ -141,7 +141,7 @@ export default function SuperAdminPage() {
 
 	if (loading) {
 		return (
-			<div className="min-h-screen bg-black text-white flex items-center justify-center">
+			<div className="min-h-screen bg-gradient-to-br from-purple-900 to-pink-900 text-white flex items-center justify-center">
 				<div className="text-center">
 					<div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
 					<p>Loading Super Admin Dashboard...</p>
@@ -151,9 +151,9 @@ export default function SuperAdminPage() {
 	}
 
 	return (
-		<div className="min-h-screen bg-black text-white">
+		<div className="min-h-screen bg-gradient-to-br from-purple-900 to-pink-900 text-white">
 			{/* Header */}
-			<header className="bg-gray-900 border-b border-gray-800">
+			<header className="bg-purple-800/50 border-b border-purple-600">
 				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 					<div className="flex justify-between items-center h-16">
 						<div className="flex items-center">
@@ -184,7 +184,7 @@ export default function SuperAdminPage() {
 			<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
 				{/* Statistics Cards */}
 				<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-					<Card className="bg-gray-900 border-gray-800">
+					<Card className="bg-purple-800/50 border-purple-600">
 						<CardContent className="p-6">
 							<div className="flex items-center">
 								<Clock className="h-8 w-8 text-yellow-400" />
@@ -200,7 +200,7 @@ export default function SuperAdminPage() {
 							</div>
 						</CardContent>
 					</Card>
-					<Card className="bg-gray-900 border-gray-800">
+					<Card className="bg-purple-800/50 border-purple-600">
 						<CardContent className="p-6">
 							<div className="flex items-center">
 								<Users className="h-8 w-8 text-blue-400" />
@@ -219,7 +219,7 @@ export default function SuperAdminPage() {
 
 				{/* Main Content Tabs */}
 				<Tabs defaultValue="pending" className="w-full">
-					<TabsList className="grid w-full grid-cols-2 bg-gray-900 border-gray-800">
+					<TabsList className="grid w-full grid-cols-2 bg-purple-800/50 border-purple-600">
 						<TabsTrigger
 							value="pending"
 							className="data-[state=active]:bg-purple-600 data-[state=active]:text-white"
@@ -237,7 +237,7 @@ export default function SuperAdminPage() {
 					</TabsList>
 
 					<TabsContent value="pending" className="space-y-6">
-						<Card className="bg-gray-900 border-gray-800">
+						<Card className="bg-purple-800/50 border-purple-600">
 							<CardHeader>
 								<CardTitle className="text-white">
 									Pending Stage Manager Registrations
@@ -375,7 +375,7 @@ export default function SuperAdminPage() {
 					</TabsContent>
 
 					<TabsContent value="stage-managers" className="space-y-6">
-						<Card className="bg-gray-900 border-gray-800">
+						<Card className="bg-purple-800/50 border-purple-600">
 							<CardHeader>
 								<CardTitle className="text-white">
 									All Stage Managers

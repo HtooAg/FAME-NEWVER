@@ -80,7 +80,7 @@ export function VideoPlayer({
 					</p>
 				</div>
 			</div>
-			<div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
+			<div className="absolute inset-0 bg-purple-900/20 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
 				<Download className="h-6 w-6 text-white" />
 			</div>
 		</div>
@@ -96,7 +96,7 @@ export function VideoPlayer({
 							</p>
 						</div>
 					</div>
-					<div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
+					<div className="absolute inset-0 bg-purple-900/20 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
 						<Play className="h-6 w-6 text-white" />
 					</div>
 				</div>
@@ -199,7 +199,7 @@ export function ImageViewer({
 					</p>
 				</div>
 			</div>
-			<div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
+			<div className="absolute inset-0 bg-purple-900/20 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
 				<Download className="h-6 w-6 text-white" />
 			</div>
 		</div>
@@ -213,7 +213,7 @@ export function ImageViewer({
 						className="w-full h-full object-cover rounded-lg"
 						onError={handleImageError}
 					/>
-					<div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
+					<div className="absolute inset-0 bg-purple-900/20 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
 						<Eye className="h-6 w-6 text-white" />
 					</div>
 				</div>

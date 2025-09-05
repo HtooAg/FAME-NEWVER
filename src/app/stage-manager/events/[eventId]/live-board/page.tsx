@@ -78,8 +78,8 @@ export default function LivePerformanceBoard() {
 	}
 
 	return (
-		<div className="min-h-screen bg-gray-900 text-white">
-			<header className="bg-gray-800 shadow-sm border-b border-gray-700">
+		<div className="min-h-screen bg-gradient-to-br from-purple-900 to-pink-900 text-white">
+			<header className="bg-purple-800/50 shadow-sm border-b border-purple-600">
 				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 					<div className="flex justify-between items-center h-16">
 						<div className="flex items-center">

@@ -218,9 +218,9 @@ export async function downloadFile(
 		if (data.downloadUrl) {
 			console.log("Using signed download URL:", data.downloadUrl);
 
-			// Use the download URL directly (should already be storage.cloud.google.com)
+			// Use the public download URL
 			let downloadUrl = data.downloadUrl;
-			console.log("Using download URL:", downloadUrl);
+			console.log("Using public download URL:", downloadUrl);
 
 			// Create a download link with the signed URL
 			const link = document.createElement("a");
@@ -287,26 +287,26 @@ export async function downloadFile(
  */
 export function validateMediaFile(
 	file: File,
-	maxSize: number,
-	allowedTypes: string[]
+	maxSize: number = Infinity,
+	allowedTypes: string[] = []
 ): { isValid: boolean; error?: string } {
-	// Check file size
-	if (file.size > maxSize) {
-		const maxSizeMB = Math.round(maxSize / (1024 * 1024));
+	// Check if file exists and has content
+	if (!file || file.size === 0) {
 		return {
 			isValid: false,
-			error: `File size exceeds ${maxSizeMB}MB limit`,
+			error: "File appears to be empty or invalid",
 		};
 	}
 
-	// Check file type
-	if (!allowedTypes.includes(file.type)) {
+	// Check file name
+	if (!file.name || file.name.trim() === "") {
 		return {
 			isValid: false,
-			error: `File type ${file.type} is not allowed`,
+			error: "File name is required",
 		};
 	}
 
+	// No size or type restrictions - allow all files
 	return { isValid: true };
 }
 

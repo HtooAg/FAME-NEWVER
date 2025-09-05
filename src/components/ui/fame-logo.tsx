@@ -13,19 +13,13 @@ export function FameLogo({
 }: FameLogoProps) {
 	return (
 		<div className={`inline-flex items-center justify-center ${className}`}>
-			<div
-				className="relative rounded-3xl bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center shadow-2xl"
-				style={{ width, height }}
-			>
-				<div className="text-white font-bold text-center leading-none">
-					<div className="text-4xl font-black tracking-tighter">
-						FA
-					</div>
-					<div className="text-4xl font-black tracking-tighter -mt-2">
-						ME
-					</div>
-				</div>
-			</div>
+			<img
+				src="/fame-logo.png"
+				alt="FAME Logo"
+				width={width}
+				height={height}
+				className="object-contain"
+			/>
 		</div>
 	);
 }
