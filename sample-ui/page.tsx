@@ -1,252 +1,289 @@
 "use client";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { useAuth } from "@/components/auth-provider";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Loader2 } from "lucide-react";
-import Image from "next/image";
-import { motion } from "framer-motion";
+import { FameLogo } from "@/components/ui/fame-logo";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 
 export default function HomePage() {
-	const { user, loading } = useAuth();
 	const router = useRouter();
+	const [mounted, setMounted] = useState(false);
 
 	useEffect(() => {
-		console.log("HomePage useEffect - loading:", loading, "user:", user); // Debug log
-
-		// Add a small delay to avoid conflicts with login redirects
-		const redirectTimer = setTimeout(() => {
-			if (!loading && user) {
-				if (
-					user.accountStatus === "suspended" ||
-					user.accountStatus === "deactivated"
-				) {
-					router.push("/account-suspended");
-					return;
-				}
-				switch (user.role) {
-					case "super_admin":
-						window.location.href = "/super-admin";
-						break;
-					case "stage_manager":
-						if (user.accountStatus === "active") {
-							window.location.href = "/stage-manager";
-						} else if (user.accountStatus === "pending") {
-							window.location.href = "/account-pending";
-						} else if (user.accountStatus === "suspended") {
-							window.location.href = "/account-suspended";
-						}
-						break;
-					case "artist":
-						window.location.href = "/artist";
-						break;
-					case "dj":
-						window.location.href = "/dj";
-						break;
-					default:
-						window.location.href = "/login";
-				}
-			} else if (!loading && !user) {
-				console.log("No user found, staying on landing page"); // Debug log
-			}
-		}, 200); // Small delay to avoid conflicts
-
-		return () => clearTimeout(redirectTimer);
-	}, [user, loading, router]);
-
-	if (loading) {
-		return (
-			<div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-600 to-pink-600">
-				<Card className="w-96">
-					<CardContent className="flex flex-col items-center justify-center p-8">
-						<Image
-							src="/fame-logo.png"
-							alt="FAME Logo"
-							width={120}
-							height={120}
-							className="mb-4"
-						/>
-						<Loader2 className="h-8 w-8 animate-spin text-purple-600" />
-						<p className="mt-4 text-gray-600">Loading FAME...</p>
-					</CardContent>
-				</Card>
-			</div>
-		);
-	}
+		setMounted(true);
+	}, []);
 
 	return (
-		<div className="min-h-screen bg-black text-white overflow-hidden">
+		<div className="min-h-screen bg-gradient-to-br from-purple-900 to-pink-900 text-white overflow-hidden">
 			{/* Animated Background */}
 			<div className="absolute inset-0">
 				<div className="absolute inset-0 bg-gradient-to-br from-purple-900/20 via-black to-pink-900/20" />
-				<motion.div
-					className="absolute top-20 left-20 w-72 h-72 bg-purple-600/10 rounded-full blur-3xl"
-					animate={{
-						x: [0, 100, 0],
-						y: [0, -50, 0],
-						scale: [1, 1.2, 1],
-					}}
-					transition={{
-						duration: 8,
-						repeat: Infinity,
-						ease: "easeInOut",
-					}}
+				<div className="absolute top-20 left-20 w-72 h-72 bg-purple-600/10 rounded-full blur-3xl animate-float" />
+				<div
+					className="absolute bottom-20 right-20 w-96 h-96 bg-pink-600/10 rounded-full blur-3xl animate-float"
+					style={{ animationDelay: "1s" }}
 				/>
-				<motion.div
-					className="absolute bottom-20 right-20 w-96 h-96 bg-pink-600/10 rounded-full blur-3xl"
-					animate={{
-						x: [0, -80, 0],
-						y: [0, 60, 0],
-						scale: [1, 0.8, 1],
-					}}
-					transition={{
-						duration: 10,
-						repeat: Infinity,
-						ease: "easeInOut",
-					}}
-				/>
-				<motion.div
-					className="absolute top-1/2 left-1/2 w-64 h-64 bg-blue-600/5 rounded-full blur-3xl"
-					animate={{
-						x: [-50, 50, -50],
-						y: [-30, 30, -30],
-						rotate: [0, 180, 360],
-					}}
-					transition={{
-						duration: 12,
-						repeat: Infinity,
-						ease: "linear",
-					}}
+				<div
+					className="absolute top-1/2 left-1/2 w-64 h-64 bg-blue-600/5 rounded-full blur-3xl animate-float"
+					style={{ animationDelay: "2s" }}
 				/>
 			</div>
 
 			{/* Hero Section */}
 			<div className="relative z-10 flex flex-col items-center justify-center min-h-screen px-4 text-center">
-				<motion.div
-					initial={{ opacity: 0, scale: 0.5 }}
-					animate={{ opacity: 1, scale: 1 }}
-					transition={{ duration: 0.8, ease: "easeOut" }}
-					className="mb-8"
+				<div
+					className={`mb-8 ${
+						mounted ? "animate-scale-in" : "opacity-0"
+					}`}
 				>
 					<div className="relative">
-						<motion.div
-							className="absolute inset-0 bg-gradient-to-r from-purple-600 to-pink-600 rounded-3xl blur-2xl opacity-30"
-							animate={{
-								scale: [1, 1.1, 1],
-								opacity: [0.3, 0.5, 0.3],
-							}}
-							transition={{
-								duration: 3,
-								repeat: Infinity,
-								ease: "easeInOut",
-							}}
-						/>
-						<Image
-							src="/fame-logo.png"
-							alt="FAME Logo"
+						<div className="absolute inset-0 bg-gradient-to-r from-purple-600 to-pink-600 rounded-3xl blur-2xl opacity-30 animate-glow" />
+						<FameLogo
 							width={200}
 							height={200}
-							className="relative z-10 drop-shadow-2xl"
-							priority
+							className="relative z-10 drop-shadow-2xl hover-lift"
 						/>
 					</div>
-				</motion.div>
+				</div>
 
-				<motion.h1
-					className="text-5xl sm:text-6xl md:text-7xl font-bold mb-6 bg-gradient-to-r from-white via-purple-200 to-pink-200 bg-clip-text text-transparent"
-					initial={{ opacity: 0, y: 50 }}
-					animate={{ opacity: 1, y: 0 }}
-					transition={{ duration: 0.8, delay: 0.3 }}
+				<h1
+					className={`text-5xl sm:text-6xl md:text-7xl font-bold mb-6 text-white drop-shadow-lg ${
+						mounted
+							? "animate-fade-in-up animate-stagger-1"
+							: "opacity-0"
+					}`}
+					style={{
+						textShadow:
+							"0 0 30px rgba(168, 85, 247, 0.8), 0 0 60px rgba(236, 72, 153, 0.5), 0 4px 20px rgba(0, 0, 0, 0.3)",
+					}}
 				>
 					Welcome to FAME
-				</motion.h1>
+				</h1>
 
-				<motion.p
-					className="text-xl sm:text-2xl md:text-3xl mb-12 max-w-4xl px-4 text-gray-300 leading-relaxed"
-					initial={{ opacity: 0, y: 30 }}
-					animate={{ opacity: 1, y: 0 }}
-					transition={{ duration: 0.8, delay: 0.5 }}
+				<p
+					className={`text-xl sm:text-2xl md:text-3xl mb-12 max-w-4xl px-4 font-medium leading-relaxed text-purple-200 ${
+						mounted
+							? "animate-fade-in-up animate-stagger-2"
+							: "opacity-0"
+					}`}
+					style={{
+						textShadow:
+							"0 2px 10px rgba(0, 0, 0, 0.7), 0 0 20px rgba(165, 180, 252, 0.6), 0 0 40px rgba(165, 180, 252, 0.3)",
+					}}
 				>
 					Your Ultimate Event Management Platform for Stage Managers
-					and Artists
-				</motion.p>
+				</p>
 
-				<motion.div
-					className="flex flex-col sm:flex-row gap-6 items-center"
-					initial={{ opacity: 0, y: 30 }}
-					animate={{ opacity: 1, y: 0 }}
-					transition={{ duration: 0.8, delay: 0.7 }}
+				<div
+					className={`flex flex-col sm:flex-row gap-6 items-center ${
+						mounted
+							? "animate-fade-in-up animate-stagger-3"
+							: "opacity-0"
+					}`}
 				>
-					<motion.div
-						whileHover={{ scale: 1.05 }}
-						whileTap={{ scale: 0.95 }}
+					<Button
+						size="lg"
+						className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white text-xl px-10 py-6 rounded-full shadow-2xl border-0 font-semibold tracking-wide hover-lift hover-glow transition-all duration-300"
+						onClick={() => router.push("/register")}
 					>
-						<Button
-							size="lg"
-							className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white text-xl px-10 py-6 rounded-full shadow-2xl border-0 font-semibold tracking-wide"
-							onClick={() => router.push("/register")}
-						>
-							Get Started
-						</Button>
-					</motion.div>
+						Get Started
+					</Button>
 
-					<motion.div
-						whileHover={{ scale: 1.05 }}
-						whileTap={{ scale: 0.95 }}
+					<Button
+						size="lg"
+						variant="outline"
+						className="bg-transparent border-2 border-purple-400 text-white hover:bg-purple-600 hover:text-white text-xl px-10 py-6 rounded-full shadow-2xl font-semibold tracking-wide hover-lift transition-all duration-300"
+						style={{
+							textShadow: "0 0 15px rgba(196, 181, 253, 0.6)",
+							boxShadow:
+								"0 0 20px rgba(168, 85, 247, 0.3), 0 8px 32px rgba(0, 0, 0, 0.3)",
+						}}
+						onClick={() => router.push("/register")}
 					>
-						<Button
-							size="lg"
-							variant="outline"
-							className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white text-xl px-10 py-6 rounded-full shadow-2xl border-0 font-semibold tracking-wide"
-							onClick={() => router.push("/register")}
-						>
-							Create Free Account
-						</Button>
-					</motion.div>
-				</motion.div>
+						Join as Stage Manager
+					</Button>
+				</div>
 
-				<motion.div
-					className="mt-12"
-					initial={{ opacity: 0 }}
-					animate={{ opacity: 1 }}
-					transition={{ duration: 0.8, delay: 0.9 }}
+				<div
+					className={`mt-12 ${
+						mounted
+							? "animate-fade-in-up animate-stagger-4"
+							: "opacity-0"
+					}`}
 				>
-					<p className="text-gray-400 text-lg mb-4">
+					<p
+						className="text-lg mb-4 font-medium text-cyan-300"
+						style={{
+							textShadow:
+								"0 2px 8px rgba(0, 0, 0, 0.8), 0 0 15px rgba(103, 232, 249, 0.6), 0 0 30px rgba(103, 232, 249, 0.3)",
+						}}
+					>
 						Already have an account?
 					</p>
-					<motion.button
-						onClick={() => router.push("/login")}
-						className="text-purple-400 hover:text-purple-300 text-xl font-semibold underline decoration-2 underline-offset-4 transition-all duration-300"
-						whileHover={{ scale: 1.05 }}
-						whileTap={{ scale: 0.95 }}
-					>
-						Sign in
-					</motion.button>
-				</motion.div>
+					<div className="flex flex-col gap-4 items-center">
+						<button
+							onClick={() => router.push("/login")}
+							className="text-xl font-semibold underline decoration-2 underline-offset-4 transition-all duration-300 hover-glow text-yellow-300"
+							style={{
+								textShadow:
+									"0 0 15px rgba(253, 224, 71, 0.8), 0 0 30px rgba(253, 224, 71, 0.5), 0 0 45px rgba(253, 224, 71, 0.3)",
+							}}
+						>
+							Sign in
+						</button>
 
-				{/* Floating particles */}
-				{[...Array(20)].map((_, i) => (
-					<motion.div
-						key={i}
-						className="absolute w-2 h-2 bg-white/20 rounded-full"
-						style={{
-							left: `${Math.random() * 100}%`,
-							top: `${Math.random() * 100}%`,
-						}}
-						animate={{
-							y: [0, -100, 0],
-							opacity: [0, 1, 0],
-						}}
-						transition={{
-							duration: 3 + Math.random() * 2,
-							repeat: Infinity,
-							delay: Math.random() * 2,
-							ease: "easeInOut",
-						}}
-					/>
-				))}
+						{/* Temporary logout button for debugging */}
+						{/* <button
+							onClick={async () => {
+								try {
+									await fetch("/api/auth/logout", {
+										method: "POST",
+									});
+									alert(
+										"Session cleared! Now try signing in."
+									);
+								} catch (error) {
+									console.error("Logout error:", error);
+								}
+							}}
+							className="text-sm underline font-medium text-orange-300"
+							style={{
+								textShadow:
+									"0 0 10px rgba(253, 186, 116, 0.8), 0 0 20px rgba(253, 186, 116, 0.5), 0 0 30px rgba(253, 186, 116, 0.3)",
+							}}
+						>
+							Clear Session (Debug)
+						</button> */}
+					</div>
+
+					{/* Development Helper */}
+					{/* {process.env.NODE_ENV === "development" && (
+						<div className="mt-8 p-4 bg-yellow-900/20 border border-yellow-600/30 rounded-lg">
+							<p className="text-yellow-400 text-sm mb-4">
+								Development Mode
+							</p>
+							<div className="flex flex-col gap-2">
+								<button
+									onClick={async () => {
+										try {
+											const response = await fetch(
+												"/api/dev/init",
+												{ method: "POST" }
+											);
+											const data = await response.json();
+											if (data.success) {
+												alert(
+													"Test users created! Check console for login details."
+												);
+												console.log(
+													"Test accounts:",
+													data.data.users
+												);
+											} else {
+												alert(
+													"Error: " +
+														data.error.message
+												);
+											}
+										} catch (error) {
+											console.error("Init error:", error);
+											alert(
+												"Failed to initialize test data"
+											);
+										}
+									}}
+									className="text-yellow-400 hover:text-yellow-300 text-sm underline text-left"
+								>
+									Create Test Users
+								</button>
+								<button
+									onClick={async () => {
+										try {
+											const response = await fetch(
+												"/api/dev/create-super-admin",
+												{ method: "POST" }
+											);
+											const data = await response.json();
+											if (data.success) {
+												alert(
+													"Super admin created! Email: admin@fame.dev, Password: admin123"
+												);
+												console.log(
+													"Super admin:",
+													data.data.user
+												);
+											} else {
+												alert(
+													"Error: " +
+														data.error.message
+												);
+											}
+										} catch (error) {
+											console.error(
+												"Create admin error:",
+												error
+											);
+											alert(
+												"Failed to create super admin"
+											);
+										}
+									}}
+									className="text-yellow-400 hover:text-yellow-300 text-sm underline text-left"
+								>
+									Create Super Admin
+								</button>
+								<button
+									onClick={async () => {
+										try {
+											const response = await fetch(
+												"/api/dev/check-users"
+											);
+											const data = await response.json();
+											if (data.success) {
+												console.log(
+													"Found users:",
+													data.data.foundUsers
+												);
+												alert(
+													`Found ${data.data.totalFound} users. Check console for details.`
+												);
+											} else {
+												alert(
+													"Error: " +
+														data.error.message
+												);
+											}
+										} catch (error) {
+											console.error(
+												"Check users error:",
+												error
+											);
+											alert("Failed to check users");
+										}
+									}}
+									className="text-yellow-400 hover:text-yellow-300 text-sm underline text-left"
+								>
+									Check Existing Users
+								</button>
+							</div>
+						</div>
+					)} */}
+				</div>
+
+				{/* Enhanced Floating particles */}
+				{mounted &&
+					[...Array(20)].map((_, i) => (
+						<div
+							key={i}
+							className="absolute w-2 h-2 bg-white/20 rounded-full animate-particle-float"
+							style={{
+								left: `${Math.random() * 100}%`,
+								top: `${Math.random() * 100}%`,
+								animationDelay: `${Math.random() * 4}s`,
+								animationDuration: `${3 + Math.random() * 2}s`,
+							}}
+						/>
+					))}
 			</div>
 		</div>
 	);

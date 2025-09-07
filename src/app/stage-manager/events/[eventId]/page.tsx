@@ -251,7 +251,7 @@ export default function EventManagementPage() {
 										})()}
 									</div>
 									<Link
-										href={`/stage-manager/events/${eventId}`}
+										href={`/stage-manager/events/${eventId}/artists`}
 									>
 										<Button className="w-full bg-purple-600 hover:bg-purple-700 text-white">
 											<ExternalLink className="h-4 w-4 mr-2" />
@@ -421,7 +421,7 @@ export default function EventManagementPage() {
 					</div>
 
 					{/* Show Dates Section */}
-					{event.showDates.length > 0 && (
+					{event.showDates && event.showDates.length > 0 && (
 						<Card className="shadow-lg bg-white">
 							<CardHeader>
 								<CardTitle className="text-xl font-bold text-gray-900">

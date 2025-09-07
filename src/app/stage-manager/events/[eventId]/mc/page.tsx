@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,7 +27,8 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Label } from "@/components/ui/label";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
 	Mic,
 	Clock,
@@ -45,26 +46,27 @@ import {
 	Sparkles,
 	Play,
 	AlertTriangle,
+	RefreshCw,
 } from "lucide-react";
-import { motion } from "framer-motion";
-import Image from "next/image";
-import Link from "next/link";
+import { useToast } from "@/hooks/use-toast";
+import { formatDateSimple, formatDateForDropdown } from "@/lib/date-utils";
 
 interface Artist {
 	id: string;
-	artistName: string;
-	realName?: string;
+	artist_name: string;
+	real_name?: string | null;
 	style: string;
-	biography?: string;
-	performanceDuration: number;
-	performanceOrder: number | null;
-	rehearsalCompleted: boolean;
-	qualityRating: number | null;
-	mcNotes?: string;
-	phone?: string;
-	email?: string;
-	performanceStatus?: string;
-	performanceDate?: string;
+	biography?: string | null;
+	artist_notes?: string | null;
+	actual_duration?: number;
+	performance_order: number | null;
+	rehearsal_completed: boolean;
+	quality_rating: number | null;
+	mc_notes?: string | null;
+	phone?: string | null;
+	email?: string | null;
+	performance_status?: string | null;
+	performance_date?: string | null;
 }
 
 interface Cue {
@@ -80,11 +82,11 @@ interface Cue {
 		| "animation";
 	title: string;
 	duration?: number;
-	performanceOrder: number;
+	performance_order: number;
 	notes?: string;
-	isCompleted?: boolean;
-	mcNotes?: string;
-	performanceDate?: string;
+	is_completed?: boolean;
+	mc_notes?: string | null;
+	performance_date?: string | null;
 }
 
 interface ShowOrderItem {
@@ -92,7 +94,7 @@ interface ShowOrderItem {
 	type: "artist" | "cue";
 	artist?: Artist;
 	cue?: Cue;
-	performanceOrder: number;
+	performance_order: number;
 	status?:
 		| "not_started"
 		| "next_on_deck"
@@ -101,16 +103,25 @@ interface ShowOrderItem {
 		| "completed";
 }
 
+interface EmergencyBroadcast {
+	id: string;
+	message: string;
+	emergency_code: string;
+	is_active: boolean;
+	created_at: string;
+}
+
 interface Event {
 	id: string;
 	name: string;
-	venueName: string;
-	showDates: string[];
+	venue: string;
+	show_dates: string[];
 }
 
 export default function MCDashboard() {
 	const params = useParams();
 	const router = useRouter();
+	const { toast } = useToast();
 	const eventId = params.eventId as string;
 
 	const [event, setEvent] = useState<Event | null>(null);
@@ -119,10 +130,112 @@ export default function MCDashboard() {
 	const [selectedPerformanceDate, setSelectedPerformanceDate] =
 		useState<string>("");
 	const [eventDates, setEventDates] = useState<string[]>([]);
+	const [selectedItem, setSelectedItem] = useState<ShowOrderItem | null>(
+		null
+	);
+	const [emergencyBroadcasts, setEmergencyBroadcasts] = useState<
+		EmergencyBroadcast[]
+	>([]);
+	const [wsConnected, setWsConnected] = useState(false);
+
+	// Initialize Socket.IO connection for emergency alerts
+	useEffect(() => {
+		const connectSocket = () => {
+			try {
+				// Load Socket.IO client and connect
+				const script = document.createElement("script");
+				script.src = "/socket.io/socket.io.js";
+				let socket: any = null;
+
+				script.onload = () => {
+					// @ts-ignore - Socket.IO is loaded dynamically
+					socket = io();
+
+					socket.on("connect", () => {
+						console.log("MC Dashboard Socket.IO connected");
+						setWsConnected(true);
+
+						// Authenticate as MC for this event
+						socket.emit("authenticate", {
+							userId: `mc_${eventId}`,
+							role: "mc",
+							eventId: eventId,
+						});
+					});
+
+					socket.on("disconnect", () => {
+						console.log("MC Dashboard Socket.IO disconnected");
+						setWsConnected(false);
+					});
+
+					// Listen for emergency alerts
+					socket.on("emergency-alert", (data: any) => {
+						console.log("Emergency alert:", data);
+						fetchEmergencyBroadcasts();
+						toast({
+							title: `${data.emergency_code.toUpperCase()} EMERGENCY ALERT`,
+							description: data.message,
+							variant: "destructive",
+						});
+					});
+
+					socket.on("emergency-clear", (data: any) => {
+						console.log("Emergency cleared:", data);
+						fetchEmergencyBroadcasts();
+						toast({
+							title: "Emergency alert cleared",
+							description:
+								"Emergency broadcast has been deactivated",
+						});
+					});
+
+					// Listen for performance status updates
+					socket.on("artist_status_changed", (data: any) => {
+						console.log("Artist status changed:", data);
+						if (data.eventId === eventId) {
+							// Update local state with real-time status change
+							setShowOrderItems((prev) =>
+								prev.map((item) =>
+									item.id === data.id &&
+									item.type === "artist"
+										? {
+												...item,
+												status:
+													data.performance_status ||
+													item.status,
+										  }
+										: item
+								)
+							);
+						}
+					});
+
+					socket.on("connect_error", (error: any) => {
+						console.error("Socket.IO connection error:", error);
+						setWsConnected(false);
+					});
+				};
+
+				script.onerror = () => {
+					console.error("Failed to load Socket.IO client");
+					setWsConnected(false);
+				};
+
+				document.head.appendChild(script);
+			} catch (error) {
+				console.warn("MC Dashboard Socket.IO setup failed:", error);
+				setWsConnected(false);
+			}
+		};
+
+		connectSocket();
+	}, [eventId]);
 
 	useEffect(() => {
 		if (eventId) {
 			fetchEventData();
+			fetchEventDates();
+			fetchEmergencyBroadcasts();
 		}
 	}, [eventId]);
 
@@ -137,28 +250,43 @@ export default function MCDashboard() {
 			const response = await fetch(`/api/events/${eventId}`);
 			if (response.ok) {
 				const data = await response.json();
-				const evt = data.data || data;
+				const evt = data.data || data.event || data;
 				setEvent({
 					id: evt.id,
-					name: evt.name,
-					venueName: evt.venueName,
-					showDates: evt.showDates || [],
+					name: evt.name || evt.eventName,
+					venue: evt.venue,
+					show_dates: evt.show_dates || evt.showDates || [],
 				});
+			}
+		} catch (error) {
+			console.error("Error fetching event data:", error);
+		}
+	};
 
-				// Set up dates
-				const showDates = evt.showDates || [];
+	const fetchEventDates = async () => {
+		try {
+			const response = await fetch(`/api/events/${eventId}`);
+			if (response.ok) {
+				const data = await response.json();
+				const evt = data.data || data.event || data;
+				const showDates = evt.show_dates || evt.showDates || [];
+
 				if (showDates.length > 0) {
-					const dates = showDates.map(
-						(date: string) => date.split("T")[0]
-					);
-					setEventDates(dates);
-					if (!selectedPerformanceDate) {
-						setSelectedPerformanceDate(dates[0]);
+					// Use dates directly like other pages - no normalization needed
+					console.log("Using event dates directly:", showDates);
+					setEventDates(showDates);
+
+					if (!selectedPerformanceDate && showDates.length > 0) {
+						setSelectedPerformanceDate(showDates[0]);
+						console.log(
+							"Set default performance date:",
+							showDates[0]
+						);
 					}
 				}
 			}
 		} catch (error) {
-			console.error("Error fetching event data:", error);
+			console.error("Error fetching event dates:", error);
 		}
 	};
 
@@ -168,50 +296,134 @@ export default function MCDashboard() {
 		try {
 			setLoading(true);
 
-			// Fetch artists
+			// Fetch artists from GCS (same as performance order page)
 			const response = await fetch(`/api/events/${eventId}/artists`);
 			if (response.ok) {
 				const data = await response.json();
-				const artists = (data.artists || []).map((artist: any) => ({
-					id: artist.id,
-					artistName: artist.artistName,
-					realName: artist.realName,
-					style: artist.style,
-					biography: artist.biography,
-					performanceDuration: artist.performanceDuration || 30,
-					performanceOrder: artist.performanceOrder || null,
-					rehearsalCompleted: artist.rehearsalCompleted || false,
-					qualityRating: artist.qualityRating || null,
-					mcNotes: artist.mcNotes,
-					phone: artist.phone,
-					email: artist.email,
-					performanceStatus:
-						artist.performanceStatus || "not_started",
-					performanceDate: artist.performanceDate,
-				}));
 
-				// Create show order items from artists
-				const artistItems = artists
-					.filter((a: Artist) => a.performanceOrder !== null)
-					.map((artist: Artist, index: number) => ({
-						id: artist.id,
-						type: "artist" as const,
-						artist,
-						performanceOrder: artist.performanceOrder || index + 1,
-						status: (artist.performanceStatus ||
-							"not_started") as ShowOrderItem["status"],
-					}))
-					.sort((a, b) => a.performanceOrder - b.performanceOrder);
+				if (data.success) {
+					const artists = (data.data || []).map((artist: any) => {
+						// Debug: Log the raw artist data to see what fields are available
+						console.log("Raw artist data:", artist);
 
-				setShowOrderItems(artistItems);
+						return {
+							id: artist.id,
+							artist_name:
+								artist.artistName || artist.artist_name,
+							real_name: artist.realName || artist.real_name,
+							style: artist.style,
+							biography: artist.biography,
+							artist_notes:
+								artist.artist_notes || artist.artistNotes,
+							actual_duration:
+								artist.musicTracks?.find(
+									(track: any) => track.is_main_track
+								)?.duration || null,
+							performance_order: artist.performance_order || null,
+							rehearsal_completed:
+								artist.rehearsal_completed || false,
+							quality_rating: artist.quality_rating || null,
+							mc_notes: artist.mc_notes,
+							phone: artist.phone,
+							email: artist.email,
+							performance_status:
+								artist.performance_status || null,
+							performance_date:
+								artist.performanceDate ||
+								artist.performance_date,
+						};
+					});
+
+					// Filter artists for the selected performance date
+					const filteredArtists = artists.filter((a: Artist) => {
+						if (!a.performance_date) return false;
+
+						// Normalize both dates for comparison
+						let artistDate: string;
+						const performanceDate = a.performance_date;
+
+						if (performanceDate.includes("T")) {
+							artistDate = performanceDate.split("T")[0];
+						} else {
+							artistDate = performanceDate;
+						}
+
+						// Normalize selectedPerformanceDate for comparison
+						let normalizedSelectedDate = selectedPerformanceDate;
+						if (selectedPerformanceDate.includes("T")) {
+							normalizedSelectedDate =
+								selectedPerformanceDate.split("T")[0];
+						}
+
+						return artistDate === normalizedSelectedDate;
+					});
+
+					// Artists assigned to show order
+					const assignedArtists = filteredArtists
+						.filter(
+							(a: Artist) =>
+								a.performance_order !== null ||
+								(a.performance_status &&
+									a.performance_status !== "not_started" &&
+									a.rehearsal_completed)
+						)
+						.map((artist: Artist) => ({
+							id: artist.id,
+							type: "artist" as const,
+							artist,
+							performance_order: artist.performance_order || 0,
+							status: (artist.performance_status ||
+								"not_started") as ShowOrderItem["status"],
+						}));
+
+					// Fetch cues from GCS
+					let cueItems: ShowOrderItem[] = [];
+					try {
+						const cuesResponse = await fetch(
+							`/api/events/${eventId}/cues?performanceDate=${selectedPerformanceDate}`
+						);
+						if (cuesResponse.ok) {
+							const cuesResult = await cuesResponse.json();
+							if (cuesResult.success) {
+								cueItems = cuesResult.data.map((cue: any) => ({
+									id: cue.id,
+									type: "cue" as const,
+									cue: {
+										...cue,
+										mc_notes: cue.mc_notes,
+									},
+									performance_order: cue.performance_order,
+									status: (cue.performance_status ||
+										(cue.is_completed
+											? "completed"
+											: "not_started")) as ShowOrderItem["status"],
+								}));
+							}
+						}
+					} catch (cueError) {
+						console.error("Error fetching cues:", cueError);
+					}
+
+					// Combine and sort all show order items
+					const allShowOrderItems = [
+						...assignedArtists,
+						...cueItems,
+					].sort((a, b) => a.performance_order - b.performance_order);
+
+					setShowOrderItems(allShowOrderItems);
+				}
 			}
 		} catch (error) {
 			console.error("Error fetching performance order:", error);
+			toast({
+				title: "Error loading data",
+				description: "Failed to load performance order",
+				variant: "destructive",
+			});
 		} finally {
 			setLoading(false);
 		}
 	};
-
 	const updateMCNotes = async (
 		itemId: string,
 		notes: string,
@@ -219,30 +431,94 @@ export default function MCDashboard() {
 	) => {
 		try {
 			if (itemType === "artist") {
-				// Update local state
-				setShowOrderItems((prev) =>
-					prev.map((item) =>
-						item.id === itemId && item.type === "artist"
-							? {
-									...item,
-									artist: {
-										...item.artist!,
-										mcNotes: notes,
-									},
-							  }
-							: item
-					)
+				// Update artist MC notes via API
+				const response = await fetch(
+					`/api/events/${eventId}/artists/${itemId}`,
+					{
+						method: "PATCH",
+						headers: {
+							"Content-Type": "application/json",
+						},
+						body: JSON.stringify({
+							mc_notes: notes,
+						}),
+					}
 				);
-				alert("MC Notes updated successfully");
+
+				if (response.ok) {
+					// Update local state
+					setShowOrderItems((prev) =>
+						prev.map((item) =>
+							item.id === itemId && item.type === "artist"
+								? {
+										...item,
+										artist: {
+											...item.artist!,
+											mc_notes: notes,
+										},
+								  }
+								: item
+						)
+					);
+
+					toast({
+						title: "MC Notes updated",
+						description:
+							"Artist notes have been saved successfully",
+					});
+				} else {
+					throw new Error("Failed to update artist MC notes");
+				}
+			} else {
+				// Update cue MC notes via API
+				const response = await fetch(`/api/events/${eventId}/cues`, {
+					method: "PATCH",
+					headers: {
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({
+						id: itemId,
+						mc_notes: notes,
+						performanceDate: selectedPerformanceDate,
+					}),
+				});
+
+				if (response.ok) {
+					// Update local state
+					setShowOrderItems((prev) =>
+						prev.map((item) =>
+							item.id === itemId && item.type === "cue"
+								? {
+										...item,
+										cue: { ...item.cue!, mc_notes: notes },
+								  }
+								: item
+						)
+					);
+
+					toast({
+						title: "MC Notes updated",
+						description: "Cue notes have been saved successfully",
+					});
+				} else {
+					throw new Error("Failed to update cue MC notes");
+				}
 			}
 		} catch (error) {
 			console.error("Error updating MC notes:", error);
-			alert("Failed to update MC notes");
+			toast({
+				title: "Error updating notes",
+				description: "Failed to save MC notes",
+				variant: "destructive",
+			});
 		}
 	};
 
 	const getItemStatus = (item: ShowOrderItem, index: number) => {
 		if (item.status) return item.status;
+		if (item.type === "cue" && item.cue?.is_completed) {
+			return "completed";
+		}
 		if (index === 0) return "currently_on_stage";
 		if (index === 1) return "next_on_stage";
 		if (index === 2) return "next_on_deck";
@@ -252,15 +528,15 @@ export default function MCDashboard() {
 	const getRowColorClasses = (status: string) => {
 		switch (status) {
 			case "completed":
-				return "bg-red-50 border-red-200";
+				return "border-red-300 text-red-900 shadow-sm border-2";
 			case "currently_on_stage":
-				return "bg-green-50 border-green-200";
+				return "border-green-300 text-green-900 shadow-sm border-2";
 			case "next_on_stage":
-				return "bg-yellow-50 border-yellow-200";
+				return "border-yellow-300 text-yellow-900 shadow-sm border-2";
 			case "next_on_deck":
-				return "bg-blue-50 border-blue-200";
+				return "border-blue-300 text-blue-900 shadow-sm border-2";
 			default:
-				return "bg-background";
+				return "border-gray-300 text-gray-900 shadow-sm border-2";
 		}
 	};
 
@@ -268,49 +544,130 @@ export default function MCDashboard() {
 		switch (status) {
 			case "completed":
 				return (
-					<Badge className="bg-red-500 text-white">Completed</Badge>
+					<Badge className="bg-red-500 text-white hover:bg-red-500 cursor-default">
+						Completed
+					</Badge>
 				);
 			case "currently_on_stage":
 				return (
-					<Badge className="bg-green-500 text-white">
+					<Badge className="bg-green-500 text-white hover:bg-green-500 cursor-default">
 						Currently On Stage
 					</Badge>
 				);
 			case "next_on_stage":
 				return (
-					<Badge className="bg-yellow-500 text-white">
+					<Badge className="bg-yellow-500 text-white hover:bg-yellow-500 cursor-default">
 						Next On Stage
 					</Badge>
 				);
 			case "next_on_deck":
 				return (
-					<Badge className="bg-blue-500 text-white">
+					<Badge className="bg-blue-500 text-white hover:bg-blue-500 cursor-default">
 						Next On Deck
 					</Badge>
 				);
 			default:
-				return <Badge variant="outline">Not Started</Badge>;
+				return (
+					<Badge variant="outline" className="cursor-default">
+						Not Started
+					</Badge>
+				);
+		}
+	};
+
+	// Emergency broadcast functions
+	const fetchEmergencyBroadcasts = async () => {
+		try {
+			const response = await fetch(
+				`/api/events/${eventId}/emergency-broadcasts`
+			);
+			if (response.ok) {
+				const data = await response.json();
+				if (data.success) {
+					setEmergencyBroadcasts(data.data || []);
+				}
+			}
+		} catch (error) {
+			console.error("Error fetching emergency broadcasts:", error);
+		}
+	};
+
+	const getEmergencyColor = (code: string) => {
+		switch (code) {
+			case "red":
+				return "bg-red-500 text-white";
+			case "blue":
+				return "bg-blue-500 text-white";
+			case "green":
+				return "bg-green-500 text-white";
+			default:
+				return "bg-gray-500 text-white";
 		}
 	};
 
 	const getQualityBadge = (rating: number | null) => {
 		if (!rating) return null;
 
+		const colors = {
+			1: "text-green-500",
+			2: "text-yellow-500",
+			3: "text-blue-500",
+		};
+
 		return (
 			<div className="flex items-center gap-1">
 				{Array.from({ length: rating }, (_, i) => (
 					<Star
 						key={i}
-						className="h-3 w-3 fill-current text-yellow-500"
+						className={`h-3 w-3 fill-current ${
+							colors[rating as keyof typeof colors]
+						}`}
 					/>
 				))}
 			</div>
 		);
 	};
 
+	const getCueIcon = (cueType: Cue["type"]) => {
+		const iconMap = {
+			mc_break: Mic,
+			video_break: Video,
+			cleaning_break: Trash2,
+			speech_break: Speaker,
+			opening: Play,
+			countdown: Timer,
+			artist_ending: CheckCircle,
+			animation: Sparkles,
+		};
+		return iconMap[cueType];
+	};
+
+	// Helper function to format duration from seconds to minutes:seconds
+	const formatDuration = (seconds: number | null) => {
+		if (!seconds) return "N/A";
+		const mins = Math.floor(seconds / 60);
+		const secs = seconds % 60;
+		return `${mins}:${secs.toString().padStart(2, "0")}`;
+	};
+
+	// Helper function to get display duration (prefer actual_duration over performance_duration)
+	const getDisplayDuration = (artist: Artist) => {
+		if ((artist as any).actual_duration) {
+			return formatDuration((artist as any).actual_duration);
+		}
+		return `${artist.performance_date} min`;
+	};
+
 	const getDefaultIntroduction = (item: ShowOrderItem) => {
 		if (item.type === "artist" && item.artist) {
-			return `Ladies and gentlemen, please welcome to the stage ${item.artist.artistName}! ${item.artist.artistName} is a talented ${item.artist.style} performer who brings ${item.artist.performanceDuration} minutes of incredible entertainment. Let's give them a warm welcome!`;
+			const durationText = item.artist.actual_duration
+				? `${formatDuration(item.artist.actual_duration)} of`
+				: "";
+			return `Ladies and gentlemen, please welcome to the stage ${item.artist.artist_name}! ${item.artist.artist_name} is a talented ${item.artist.style} performer who brings ${durationText} incredible entertainment. Let's give them a warm welcome!`;
+		} else if (item.type === "cue" && item.cue) {
+			return `Ladies and gentlemen, we now have a ${item.cue.title.toLowerCase()} for ${
+				item.cue.duration
+			} minutes. Please enjoy this brief intermission.`;
 		}
 		return "";
 	};
@@ -326,8 +683,8 @@ export default function MCDashboard() {
 		const [isEditing, setIsEditing] = useState(false);
 		const [notes, setNotes] = useState(
 			(item.type === "artist"
-				? item.artist?.mcNotes
-				: item.cue?.mcNotes) || ""
+				? item.artist?.mc_notes
+				: item.cue?.mc_notes) || ""
 		);
 
 		const handleSave = () => {
@@ -338,8 +695,8 @@ export default function MCDashboard() {
 		const handleCancel = () => {
 			setNotes(
 				(item.type === "artist"
-					? item.artist?.mcNotes
-					: item.cue?.mcNotes) || ""
+					? item.artist?.mc_notes
+					: item.cue?.mc_notes) || ""
 			);
 			setIsEditing(false);
 		};
@@ -400,47 +757,57 @@ export default function MCDashboard() {
 			</div>
 		);
 	};
-
 	if (loading) {
 		return (
-			<div className="min-h-screen bg-gray-50 flex items-center justify-center">
+			<div className="min-h-screen flex items-center justify-center bg-background">
 				<div className="text-center">
-					<div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
-					<p className="text-gray-600">Loading MC dashboard...</p>
+					<div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+					<p className="mt-2 text-muted-foreground">
+						Loading MC dashboard...
+					</p>
 				</div>
 			</div>
 		);
 	}
 
 	return (
-		<div className="min-h-screen bg-gray-50">
-			<header className="bg-white shadow-sm border-b">
-				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-					<div className="flex justify-between items-center h-16">
-						<div className="flex items-center">
-							<Link
-								href={`/stage-manager/events/${eventId}`}
-								className="mr-4"
-							>
-								<Button variant="ghost" size="sm">
-									<ArrowLeft className="h-4 w-4 mr-2" />
-									Back to Event
-								</Button>
-							</Link>
-							<Image
-								src="/fame-logo.png"
-								alt="FAME Logo"
-								width={40}
-								height={40}
-								className="mr-3"
-							/>
-							<div>
-								<h1 className="text-xl font-semibold text-gray-900">
-									MC Dashboard
-								</h1>
-								<p className="text-sm text-gray-500">
-									{event?.name} at {event?.venueName}
-								</p>
+		<div className="min-h-screen bg-background">
+			<header className="border-b border-border">
+				<div className="container mx-auto px-4 py-4">
+					<div className="flex items-center gap-4 mb-4">
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={() =>
+								router.push(`/stage-manager/events/${eventId}`)
+							}
+							className="flex items-center gap-2"
+						>
+							<ArrowLeft className="h-4 w-4" />
+							Back
+						</Button>
+					</div>
+					<div className="flex justify-between items-center">
+						<div>
+							<h1 className="text-2xl font-bold text-foreground">
+								MC Dashboard
+							</h1>
+							<p className="text-muted-foreground">
+								{event?.name} - {event?.venue}
+							</p>
+							<div className="flex items-center gap-2 mt-1">
+								<div
+									className={`w-2 h-2 rounded-full ${
+										wsConnected
+											? "bg-green-500"
+											: "bg-red-500"
+									}`}
+								></div>
+								<span className="text-xs text-muted-foreground">
+									{wsConnected
+										? "Live updates active"
+										: "Connecting..."}
+								</span>
 							</div>
 						</div>
 						<div className="flex items-center gap-4">
@@ -463,15 +830,21 @@ export default function MCDashboard() {
 													value={date}
 												>
 													Day {index + 1} -{" "}
-													{new Date(
-														date
-													).toLocaleDateString()}
+													{formatDateSimple(date)}
 												</SelectItem>
 											))}
 										</SelectContent>
 									</Select>
 								</div>
 							)}
+							<Button
+								onClick={fetchPerformanceOrder}
+								variant="outline"
+								size="sm"
+							>
+								<RefreshCw className="h-4 w-4 mr-2" />
+								Refresh
+							</Button>
 							<div className="flex items-center gap-2">
 								<Mic className="h-5 w-5" />
 								<span className="text-sm text-muted-foreground">
@@ -483,310 +856,761 @@ export default function MCDashboard() {
 				</div>
 			</header>
 
-			<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-				{/* Current Status Section */}
-				<div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-					{/* Currently On Stage */}
-					<Card className="border-green-500 bg-green-50">
-						<CardHeader className="pb-3">
-							<CardTitle className="text-lg text-green-700 flex items-center gap-2">
-								<div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
-								Currently On Stage
-							</CardTitle>
-						</CardHeader>
-						<CardContent>
-							{showOrderItems.length > 0 &&
-							showOrderItems[0]?.type === "artist" ? (
-								<div className="flex items-center gap-4">
-									<Avatar className="h-12 w-12">
-										<AvatarFallback>
-											{showOrderItems[0]
-												.artist!.artistName.charAt(0)
-												.toUpperCase()}
-										</AvatarFallback>
-									</Avatar>
+			{/* Emergency Broadcasts */}
+			{emergencyBroadcasts.length > 0 && (
+				<div className="border-b border-border">
+					{emergencyBroadcasts.map((broadcast) => (
+						<div
+							key={broadcast.id}
+							className={`p-4 ${getEmergencyColor(
+								broadcast.emergency_code
+							)}`}
+						>
+							<div className="container mx-auto flex justify-between items-center">
+								<div className="flex items-center gap-3">
+									<AlertTriangle className="h-5 w-5" />
 									<div>
-										<h3 className="font-semibold text-lg">
-											{
-												showOrderItems[0].artist!
-													.artistName
-											}
-										</h3>
-										<div className="flex items-center gap-2 text-sm text-muted-foreground">
-											<Badge variant="outline">
-												{
-													showOrderItems[0].artist!
-														.style
-												}
-											</Badge>
-											<span className="flex items-center gap-1">
-												<Clock className="h-3 w-3" />
-												{
-													showOrderItems[0].artist!
-														.performanceDuration
-												}{" "}
-												min
-											</span>
-										</div>
+										<span className="font-bold">
+											{broadcast.emergency_code.toUpperCase()}{" "}
+											ALERT:
+										</span>
+										<span className="ml-2">
+											{broadcast.message}
+										</span>
 									</div>
 								</div>
-							) : (
-								<div className="text-center text-muted-foreground">
-									<Mic className="h-8 w-8 mx-auto mb-2 opacity-50" />
-									<p>No performance currently on stage</p>
-								</div>
-							)}
-						</CardContent>
-					</Card>
-
-					{/* Next Up */}
-					<Card className="border-yellow-500 bg-yellow-50">
-						<CardHeader className="pb-3">
-							<CardTitle className="text-lg text-yellow-700 flex items-center gap-2">
-								<div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
-								Next Up
-							</CardTitle>
-						</CardHeader>
-						<CardContent>
-							{showOrderItems.length > 1 &&
-							showOrderItems[1]?.type === "artist" ? (
-								<div className="flex items-center gap-4">
-									<Avatar className="h-12 w-12">
-										<AvatarFallback>
-											{showOrderItems[1]
-												.artist!.artistName.charAt(0)
-												.toUpperCase()}
-										</AvatarFallback>
-									</Avatar>
-									<div>
-										<h3 className="font-semibold text-lg">
-											{
-												showOrderItems[1].artist!
-													.artistName
-											}
-										</h3>
-										<div className="flex items-center gap-2 text-sm text-muted-foreground">
-											<Badge variant="outline">
-												{
-													showOrderItems[1].artist!
-														.style
-												}
-											</Badge>
-											<span className="flex items-center gap-1">
-												<Clock className="h-3 w-3" />
-												{
-													showOrderItems[1].artist!
-														.performanceDuration
-												}{" "}
-												min
-											</span>
-										</div>
-									</div>
-								</div>
-							) : (
-								<div className="text-center text-muted-foreground">
-									<Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
-									<p>No next performance scheduled</p>
-								</div>
-							)}
-						</CardContent>
-					</Card>
-
-					{/* Next on Deck */}
-					<Card className="border-blue-500 bg-blue-50">
-						<CardHeader className="pb-3">
-							<CardTitle className="text-lg text-blue-700 flex items-center gap-2">
-								<div className="w-3 h-3 bg-blue-500 rounded-full"></div>
-								Next on Deck
-							</CardTitle>
-						</CardHeader>
-						<CardContent>
-							{showOrderItems.length > 2 &&
-							showOrderItems[2]?.type === "artist" ? (
-								<div className="flex items-center gap-4">
-									<Avatar className="h-12 w-12">
-										<AvatarFallback>
-											{showOrderItems[2]
-												.artist!.artistName.charAt(0)
-												.toUpperCase()}
-										</AvatarFallback>
-									</Avatar>
-									<div>
-										<h3 className="font-semibold text-lg">
-											{
-												showOrderItems[2].artist!
-													.artistName
-											}
-										</h3>
-										<div className="flex items-center gap-2 text-sm text-muted-foreground">
-											<Badge variant="outline">
-												{
-													showOrderItems[2].artist!
-														.style
-												}
-											</Badge>
-											<span className="flex items-center gap-1">
-												<Clock className="h-3 w-3" />
-												{
-													showOrderItems[2].artist!
-														.performanceDuration
-												}{" "}
-												min
-											</span>
-										</div>
-									</div>
-								</div>
-							) : (
-								<div className="text-center text-muted-foreground">
-									<Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
-									<p>No artist on deck</p>
-								</div>
-							)}
-						</CardContent>
-					</Card>
-				</div>
-
-				{/* Performance Order Table */}
-				<Card>
-					<CardHeader>
-						<CardTitle className="flex items-center gap-2">
-							<Mic className="h-5 w-5" />
-							Performance Order & MC Notes
-						</CardTitle>
-						<CardDescription>
-							Manage introductions and notes for each performance
-						</CardDescription>
-					</CardHeader>
-					<CardContent>
-						{showOrderItems.length === 0 ? (
-							<div className="text-center py-8">
-								<Mic className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-								<p className="text-gray-500">
-									No performances scheduled for this date
-								</p>
 							</div>
-						) : (
-							<Table>
-								<TableHeader>
-									<TableRow>
-										<TableHead className="w-16">
-											#
-										</TableHead>
-										<TableHead>Artist</TableHead>
-										<TableHead>Style</TableHead>
-										<TableHead>Duration</TableHead>
-										<TableHead>Quality</TableHead>
-										<TableHead>Status</TableHead>
-										<TableHead className="min-w-[200px]">
-											MC Notes
-										</TableHead>
-									</TableRow>
-								</TableHeader>
-								<TableBody>
-									{showOrderItems.map((item, index) => {
-										const status = getItemStatus(
-											item,
-											index
-										);
-										return (
-											<TableRow
-												key={item.id}
-												className={`${getRowColorClasses(
-													status
-												)} border-l-4`}
-											>
-												<TableCell className="font-medium">
-													{item.performanceOrder}
-												</TableCell>
-												<TableCell>
-													{item.type === "artist" &&
-													item.artist ? (
-														<div className="flex items-center gap-3">
-															<Avatar className="h-8 w-8">
-																<AvatarFallback>
-																	{item.artist.artistName
-																		.charAt(
-																			0
-																		)
-																		.toUpperCase()}
-																</AvatarFallback>
-															</Avatar>
-															<div>
-																<p className="font-medium">
-																	{
-																		item
-																			.artist
-																			.artistName
-																	}
-																</p>
-																{item.artist
-																	.realName && (
-																	<p className="text-xs text-muted-foreground">
+						</div>
+					))}
+				</div>
+			)}
+
+			{/* Current Status Section */}
+			<div className="border-b border-border bg-muted/30">
+				<div className="container mx-auto px-4 py-6">
+					<div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+						{/* Currently On Stage */}
+						<Card className="border-green-500 bg-green-500">
+							<CardHeader className="pb-3">
+								<CardTitle className="text-lg text-white flex items-center gap-2">
+									<div className="w-3 h-3 bg-white rounded-full animate-pulse"></div>
+									Currently On Stage
+								</CardTitle>
+							</CardHeader>
+							<CardContent className="text-white">
+								{showOrderItems.length > 0 &&
+								showOrderItems[0]?.type === "artist" ? (
+									<div className="flex items-center gap-4">
+										<Avatar className="h-12 w-12">
+											<AvatarFallback>
+												{showOrderItems[0]
+													.artist!.artist_name.charAt(
+														0
+													)
+													.toUpperCase()}
+											</AvatarFallback>
+										</Avatar>
+										<div>
+											<h3 className="font-semibold text-lg">
+												{
+													showOrderItems[0].artist!
+														.artist_name
+												}
+											</h3>
+											<div className="flex items-center gap-2 text-sm text-white/80">
+												<Badge
+													variant="outline"
+													className="bg-white/20 text-white border-white/30"
+												>
+													{
+														showOrderItems[0]
+															.artist!.style
+													}
+												</Badge>
+												{showOrderItems[0].artist!
+													.actual_duration && (
+													<span className="text-white/80 ml-1 flex items-center gap-1">
+														<Clock className="h-3 w-3" />
+														{formatDuration(
+															showOrderItems[0]
+																.artist!
+																.actual_duration
+														)}
+													</span>
+												)}
+											</div>
+										</div>
+									</div>
+								) : showOrderItems.length > 0 &&
+								  showOrderItems[0]?.type === "cue" ? (
+									<div className="flex items-center gap-4">
+										<div className="w-12 h-12 bg-muted rounded-full flex items-center justify-center">
+											{(() => {
+												const IconComponent =
+													getCueIcon(
+														showOrderItems[0].cue!
+															.type
+													);
+												return (
+													<IconComponent className="h-6 w-6 text-muted-foreground" />
+												);
+											})()}
+										</div>
+										<div>
+											<h3 className="font-semibold text-lg">
+												{showOrderItems[0].cue!.title}
+											</h3>
+											<div className="flex items-center gap-2 text-sm text-white/80">
+												<Badge
+													variant="outline"
+													className="bg-white/20 text-white border-white/30"
+												>
+													{
+														showOrderItems[0].cue!
+															.type
+													}
+												</Badge>
+												<span className="flex items-center gap-1">
+													<Clock className="h-3 w-3" />
+													{showOrderItems[0].cue!
+														.duration || 5}{" "}
+													min
+												</span>
+											</div>
+										</div>
+									</div>
+								) : (
+									<div className="text-center text-white/80">
+										<Mic className="h-8 w-8 mx-auto mb-2 opacity-50" />
+										<p>No performance currently on stage</p>
+									</div>
+								)}
+							</CardContent>
+						</Card>
+
+						{/* Next Up */}
+						<Card className="border-yellow-500 bg-yellow-500">
+							<CardHeader className="pb-3">
+								<CardTitle className="text-lg text-white flex items-center gap-2">
+									<div className="w-3 h-3 bg-white rounded-full"></div>
+									Next Up
+								</CardTitle>
+							</CardHeader>
+							<CardContent className="text-white">
+								{showOrderItems.length > 1 &&
+								showOrderItems[1]?.type === "artist" ? (
+									<div className="flex items-center gap-4">
+										<Avatar className="h-12 w-12">
+											<AvatarFallback>
+												{showOrderItems[1]
+													.artist!.artist_name.charAt(
+														0
+													)
+													.toUpperCase()}
+											</AvatarFallback>
+										</Avatar>
+										<div>
+											<h3 className="font-semibold text-lg">
+												{
+													showOrderItems[1].artist!
+														.artist_name
+												}
+											</h3>
+											<div className="flex items-center gap-2 text-sm text-white/80">
+												<Badge
+													variant="outline"
+													className="bg-white/20 text-white border-white/30"
+												>
+													{
+														showOrderItems[1]
+															.artist!.style
+													}
+												</Badge>
+												{showOrderItems[1].artist!
+													.actual_duration && (
+													<span className="text-white/80 ml-1 flex items-center gap-1">
+														<Clock className="h-3 w-3" />
+														{formatDuration(
+															showOrderItems[1]
+																.artist!
+																.actual_duration
+														)}
+													</span>
+												)}
+											</div>
+										</div>
+									</div>
+								) : showOrderItems.length > 1 &&
+								  showOrderItems[1]?.type === "cue" ? (
+									<div className="flex items-center gap-4">
+										<div className="w-12 h-12 bg-muted rounded-full flex items-center justify-center">
+											{(() => {
+												const IconComponent =
+													getCueIcon(
+														showOrderItems[1].cue!
+															.type
+													);
+												return (
+													<IconComponent className="h-6 w-6 text-muted-foreground" />
+												);
+											})()}
+										</div>
+										<div>
+											<h3 className="font-semibold text-lg">
+												{showOrderItems[1].cue!.title}
+											</h3>
+											<div className="flex items-center gap-2 text-sm text-white/80">
+												<Badge
+													variant="outline"
+													className="bg-white/20 text-white border-white/30"
+												>
+													{
+														showOrderItems[1].cue!
+															.type
+													}
+												</Badge>
+												<span className="flex items-center gap-1">
+													<Clock className="h-3 w-3" />
+													{showOrderItems[1].cue!
+														.duration || 5}{" "}
+													min
+												</span>
+											</div>
+										</div>
+									</div>
+								) : showOrderItems.length === 1 ? (
+									<div className="text-center text-white/80">
+										<Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
+										<p>Last item in performance order</p>
+									</div>
+								) : (
+									<div className="text-center text-white/80">
+										<Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
+										<p>No next performance scheduled</p>
+									</div>
+								)}
+							</CardContent>
+						</Card>
+
+						{/* Next on Deck */}
+						<Card className="border-blue-500 bg-blue-500">
+							<CardHeader className="pb-3">
+								<CardTitle className="text-lg text-white flex items-center gap-2">
+									<div className="w-3 h-3 bg-white rounded-full"></div>
+									Next on Deck
+								</CardTitle>
+							</CardHeader>
+							<CardContent className="text-white">
+								{showOrderItems.length > 2 &&
+								showOrderItems[2]?.type === "artist" ? (
+									<div className="flex items-center gap-4">
+										<Avatar className="h-12 w-12">
+											<AvatarFallback>
+												{showOrderItems[2]
+													.artist!.artist_name.charAt(
+														0
+													)
+													.toUpperCase()}
+											</AvatarFallback>
+										</Avatar>
+										<div>
+											<h3 className="font-semibold text-lg">
+												{
+													showOrderItems[2].artist!
+														.artist_name
+												}
+											</h3>
+											<div className="flex items-center gap-2 text-sm text-white/80">
+												<Badge
+													variant="outline"
+													className="bg-white/20 text-white border-white/30"
+												>
+													{
+														showOrderItems[2]
+															.artist!.style
+													}
+												</Badge>
+												{showOrderItems[2].artist!
+													.actual_duration && (
+													<span className="text-white/80 ml-1 flex items-center gap-1">
+														<Clock className="h-3 w-3" />
+														{formatDuration(
+															showOrderItems[2]
+																.artist!
+																.actual_duration
+														)}
+													</span>
+												)}
+											</div>
+										</div>
+									</div>
+								) : showOrderItems.length > 2 &&
+								  showOrderItems[2]?.type === "cue" ? (
+									<div className="flex items-center gap-4">
+										<div className="w-12 h-12 bg-muted rounded-full flex items-center justify-center">
+											{(() => {
+												const IconComponent =
+													getCueIcon(
+														showOrderItems[2].cue!
+															.type
+													);
+												return (
+													<IconComponent className="h-6 w-6 text-muted-foreground" />
+												);
+											})()}
+										</div>
+										<div>
+											<h3 className="font-semibold text-lg">
+												{showOrderItems[2].cue!.title}
+											</h3>
+											<div className="flex items-center gap-2 text-sm text-white/80">
+												<Badge
+													variant="outline"
+													className="bg-white/20 text-white border-white/30"
+												>
+													{
+														showOrderItems[2].cue!
+															.type
+													}
+												</Badge>
+												<span className="flex items-center gap-1">
+													<Clock className="h-3 w-3" />
+													{showOrderItems[2].cue!
+														.duration || 5}{" "}
+													min
+												</span>
+											</div>
+										</div>
+									</div>
+								) : showOrderItems.length <= 2 ? (
+									<div className="text-center text-white/80">
+										<Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
+										<p>No upcoming performances</p>
+									</div>
+								) : (
+									<div className="text-center text-white/80">
+										<Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
+										<p>No performance on deck</p>
+									</div>
+								)}
+							</CardContent>
+						</Card>
+					</div>
+				</div>
+			</div>
+			<main className="container mx-auto px-4 py-8">
+				<div className="space-y-6">
+					{/* Performance Schedule */}
+					<div className="flex items-center justify-between">
+						<h2 className="text-xl font-semibold">
+							Performance Schedule
+						</h2>
+						{selectedPerformanceDate && (
+							<Badge
+								variant="outline"
+								className="flex items-center gap-1"
+							>
+								<Calendar className="h-3 w-3" />
+								{formatDateForDropdown(selectedPerformanceDate)}
+							</Badge>
+						)}
+					</div>
+
+					{/* Performance Order List */}
+					<Card>
+						<CardHeader>
+							<CardTitle className="flex items-center gap-2">
+								<Mic className="h-5 w-5" />
+								MC Introduction Schedule
+							</CardTitle>
+						</CardHeader>
+						<CardContent>
+							{(() => {
+								// Filter performance items by selected date
+								const filteredItems = showOrderItems.filter(
+									(item) => {
+										if (!selectedPerformanceDate)
+											return true;
+
+										if (item.type === "artist") {
+											const performanceDate =
+												item.artist?.performance_date;
+											if (!performanceDate) return false;
+
+											// Normalize both dates for comparison
+											let artistDate: string;
+											if (performanceDate.includes("T")) {
+												artistDate =
+													performanceDate.split(
+														"T"
+													)[0];
+											} else {
+												artistDate = performanceDate;
+											}
+
+											let normalizedSelectedDate =
+												selectedPerformanceDate;
+											if (
+												selectedPerformanceDate.includes(
+													"T"
+												)
+											) {
+												normalizedSelectedDate =
+													selectedPerformanceDate.split(
+														"T"
+													)[0];
+											}
+
+											return (
+												artistDate ===
+												normalizedSelectedDate
+											);
+										}
+
+										if (item.type === "cue") {
+											// Cues are already filtered by performance date in the API call
+											return true;
+										}
+
+										return true;
+									}
+								);
+
+								if (filteredItems.length === 0) {
+									return (
+										<div className="text-center py-12">
+											<Mic className="h-16 w-16 mx-auto mb-4 opacity-50" />
+											<h3 className="text-lg font-medium mb-2">
+												No performances scheduled
+											</h3>
+											<p className="text-muted-foreground">
+												No performances found for the
+												selected date
+											</p>
+										</div>
+									);
+								}
+
+								return (
+									<Table>
+										<TableHeader>
+											<TableRow>
+												<TableHead className="w-16">
+													#
+												</TableHead>
+												<TableHead>
+													Performer/Cue
+												</TableHead>
+												<TableHead>Type</TableHead>
+												<TableHead>Duration</TableHead>
+												<TableHead>Biography</TableHead>
+												<TableHead>Status</TableHead>
+												<TableHead className="w-32">
+													Action
+												</TableHead>
+											</TableRow>
+										</TableHeader>
+										<TableBody>
+											{filteredItems.map(
+												(item, index) => {
+													const status =
+														getItemStatus(
+															item,
+															index
+														);
+													const rowClasses =
+														getRowColorClasses(
+															status
+														);
+
+													return (
+														<TableRow
+															key={item.id}
+															className={
+																rowClasses
+															}
+														>
+															<TableCell className="font-medium">
+																{index + 1}
+															</TableCell>
+															<TableCell>
+																{item.type ===
+																	"artist" &&
+																item.artist ? (
+																	<div className="flex items-center gap-3">
+																		<Avatar className="h-8 w-8">
+																			<AvatarFallback>
+																				{item.artist.artist_name
+																					.charAt(
+																						0
+																					)
+																					.toUpperCase()}
+																			</AvatarFallback>
+																		</Avatar>
+																		<div>
+																			<div className="font-medium">
+																				{
+																					item
+																						.artist
+																						.artist_name
+																				}
+																			</div>
+																			{item
+																				.artist
+																				.real_name && (
+																				<div className="text-sm text-muted-foreground">
+																					{
+																						item
+																							.artist
+																							.real_name
+																					}
+																				</div>
+																			)}
+																		</div>
+																	</div>
+																) : (
+																	item.type ===
+																		"cue" &&
+																	item.cue && (
+																		<div className="flex items-center gap-3">
+																			{(() => {
+																				const IconComponent =
+																					getCueIcon(
+																						item.cue!
+																							.type
+																					);
+																				return (
+																					<IconComponent className="h-5 w-5" />
+																				);
+																			})()}
+																			<div>
+																				<div className="font-medium">
+																					{
+																						item
+																							.cue
+																							.title
+																					}
+																				</div>
+																				<div className="text-sm text-muted-foreground">
+																					{item.cue.type.replace(
+																						"_",
+																						" "
+																					)}
+																				</div>
+																			</div>
+																		</div>
+																	)
+																)}
+															</TableCell>
+															<TableCell>
+																{item.type ===
+																	"artist" &&
+																item.artist ? (
+																	<Badge variant="outline">
 																		{
 																			item
 																				.artist
-																				.realName
+																				.style
 																		}
-																	</p>
+																	</Badge>
+																) : (
+																	item.type ===
+																		"cue" &&
+																	item.cue && (
+																		<Badge variant="secondary">
+																			{item.cue.type.replace(
+																				"_",
+																				" "
+																			)}
+																		</Badge>
+																	)
 																)}
-															</div>
+															</TableCell>
+															<TableCell>
+																{item.type ===
+																"artist" ? (
+																	<span className="flex items-center gap-1">
+																		<Clock className="h-3 w-3" />
+																		{item
+																			.artist
+																			?.actual_duration
+																			? formatDuration(
+																					item
+																						.artist
+																						.actual_duration
+																			  )
+																			: "Duration TBD"}
+																	</span>
+																) : item.type ===
+																  "cue" ? (
+																	<span className="flex items-center gap-1">
+																		<Clock className="h-3 w-3" />
+																		{item
+																			.cue
+																			?.duration ||
+																			5}{" "}
+																		min
+																	</span>
+																) : (
+																	<span className="text-muted-foreground text-sm">
+																		No
+																		duration
+																	</span>
+																)}
+															</TableCell>
+															<TableCell className="max-w-[200px]">
+																{item.type ===
+																	"artist" &&
+																item.artist ? (
+																	<div className="text-sm">
+																		{item
+																			.artist
+																			.biography ||
+																			`${item.artist.artist_name} is a talented ${item.artist.style} performer.`}
+																	</div>
+																) : (
+																	item.type ===
+																		"cue" &&
+																	item.cue && (
+																		<div className="text-sm text-muted-foreground">
+																			{item
+																				.cue
+																				.notes ||
+																				"Performance cue"}
+																		</div>
+																	)
+																)}
+															</TableCell>
+															<TableCell>
+																{getStatusBadge(
+																	status
+																)}
+															</TableCell>
+															<TableCell>
+																<Button
+																	size="sm"
+																	variant="outline"
+																	onClick={() =>
+																		setSelectedItem(
+																			item
+																		)
+																	}
+																>
+																	Select
+																</Button>
+															</TableCell>
+														</TableRow>
+													);
+												}
+											)}
+										</TableBody>
+									</Table>
+								);
+							})()}
+						</CardContent>
+					</Card>
+
+					{/* Selected Performance Item Details */}
+					{selectedItem && (
+						<Card>
+							<CardHeader>
+								<CardTitle className="flex items-center gap-2">
+									<Edit3 className="h-5 w-5" />
+									Selected Performance Item
+								</CardTitle>
+								<CardDescription>
+									Edit MC notes and introduction details
+								</CardDescription>
+							</CardHeader>
+							<CardContent>
+								<div className="space-y-6">
+									{/* Item Details */}
+									<div className="space-y-6">
+										<div>
+											<h3 className="text-lg font-semibold mb-2">
+												{selectedItem.type === "artist"
+													? selectedItem.artist
+															?.artist_name
+													: selectedItem.cue?.title}
+											</h3>
+											{selectedItem.type === "artist" &&
+												selectedItem.artist && (
+													<div className="space-y-3">
+														<div className="flex items-center gap-2">
+															<Badge variant="outline">
+																{
+																	selectedItem
+																		.artist
+																		.style
+																}
+															</Badge>
+															{selectedItem.artist
+																.actual_duration && (
+																<span className="text-sm text-muted-foreground flex items-center gap-1">
+																	<Clock className="h-3 w-3" />
+																	{formatDuration(
+																		selectedItem
+																			.artist
+																			.actual_duration
+																	)}
+																</span>
+															)}
+															{getQualityBadge(
+																selectedItem
+																	.artist
+																	.quality_rating
+															)}
 														</div>
-													) : (
-														<span>Unknown</span>
+														{selectedItem.artist
+															.biography && (
+															<div>
+																<Label className="text-sm font-medium">
+																	Biography
+																</Label>
+																<p className="text-sm text-muted-foreground mt-1">
+																	{
+																		selectedItem
+																			.artist
+																			.biography
+																	}
+																</p>
+															</div>
+														)}
+													</div>
+												)}
+										</div>
+
+										{/* MC Notes Section */}
+										<div className="space-y-3">
+											<Label className="text-sm font-medium">
+												MC Introduction Notes
+											</Label>
+											<MCNotesCell
+												item={selectedItem}
+												onUpdate={updateMCNotes}
+											/>
+										</div>
+
+										{/* Default Introduction Preview */}
+										<div className="space-y-3">
+											<Label className="text-sm font-medium">
+												Suggested Introduction
+											</Label>
+											<div className="p-4 bg-muted rounded-lg">
+												<p className="text-sm">
+													{getDefaultIntroduction(
+														selectedItem
 													)}
-												</TableCell>
-												<TableCell>
-													{item.type === "artist" &&
-													item.artist ? (
-														<Badge variant="outline">
-															{item.artist.style}
-														</Badge>
-													) : (
-														"-"
-													)}
-												</TableCell>
-												<TableCell>
-													{item.type === "artist" &&
-													item.artist ? (
-														<span className="flex items-center gap-1">
-															<Clock className="h-3 w-3" />
-															{
-																item.artist
-																	.performanceDuration
-															}{" "}
-															min
-														</span>
-													) : (
-														"-"
-													)}
-												</TableCell>
-												<TableCell>
-													{item.type === "artist" &&
-													item.artist
-														? getQualityBadge(
-																item.artist
-																	.qualityRating
-														  )
-														: "-"}
-												</TableCell>
-												<TableCell>
-													{getStatusBadge(status)}
-												</TableCell>
-												<TableCell>
-													<MCNotesCell
-														item={item}
-														onUpdate={updateMCNotes}
-													/>
-												</TableCell>
-											</TableRow>
-										);
-									})}
-								</TableBody>
-							</Table>
-						)}
-					</CardContent>
-				</Card>
-			</div>
+												</p>
+											</div>
+										</div>
+									</div>
+								</div>
+							</CardContent>
+						</Card>
+					)}
+				</div>
+			</main>
 		</div>
 	);
 }

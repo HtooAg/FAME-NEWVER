@@ -54,9 +54,23 @@ export default function ShowDateSelectionPage() {
 				setEvent(result.data);
 				// Initialize with existing show dates if any
 				const existingDates =
-					result.data.showDates?.map(
-						(date: string) => new Date(date)
-					) || [];
+					result.data.showDates?.map((date: string) => {
+						// Handle existing dates properly to avoid timezone issues
+						if (date.includes("T")) {
+							// ISO format: extract date part and create at noon local time
+							const datePart = date.split("T")[0];
+							const [year, month, day] = datePart
+								.split("-")
+								.map(Number);
+							return new Date(year, month - 1, day, 12, 0, 0);
+						} else {
+							// Assume YYYY-MM-DD format
+							const [year, month, day] = date
+								.split("-")
+								.map(Number);
+							return new Date(year, month - 1, day, 12, 0, 0);
+						}
+					}) || [];
 				setSelectedDates(existingDates);
 				setHistory([existingDates]);
 				setHistoryIndex(0);
@@ -115,7 +129,19 @@ export default function ShowDateSelectionPage() {
 					"Content-Type": "application/json",
 				},
 				body: JSON.stringify({
-					dates: selectedDates.map((date) => date.toISOString()),
+					dates: selectedDates.map((date) => {
+						// Normalize date to avoid timezone issues
+						// Create a new date at noon local time to prevent UTC conversion issues
+						const normalizedDate = new Date(
+							date.getFullYear(),
+							date.getMonth(),
+							date.getDate(),
+							12,
+							0,
+							0
+						);
+						return normalizedDate.toISOString();
+					}),
 				}),
 			});
 

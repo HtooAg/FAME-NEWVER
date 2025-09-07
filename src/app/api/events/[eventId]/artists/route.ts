@@ -88,6 +88,18 @@ export async function POST(
 		// Save updated artists list
 		await EventGCSService.saveArtists(eventId, updatedArtists);
 
+		// Broadcast WebSocket update
+		if (global.io) {
+			global.io.emit("artist_registered", {
+				type: "artist_registered",
+				data: {
+					id: artistId,
+					eventId,
+					...artist,
+				},
+			});
+		}
+
 		return NextResponse.json<APIResponse>({
 			success: true,
 			data: {

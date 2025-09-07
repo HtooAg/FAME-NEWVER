@@ -28,6 +28,7 @@ import {
 	RefreshCw,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { formatDateSimple, formatDateForDropdown } from "@/lib/date-utils";
 
 interface Event {
 	id: string;
@@ -169,10 +170,7 @@ export default function RehearsalSchedule() {
 								artist_name:
 									artist.artistName || artist.artist_name,
 								style: artist.style,
-								performance_duration:
-									artist.performanceDuration ||
-									artist.performance_duration ||
-									5,
+
 								quality_rating: artist.quality_rating || null,
 								rehearsal_date: artist.rehearsal_date || null,
 								rehearsal_order: artist.rehearsal_order || null,
@@ -832,7 +830,7 @@ export default function RehearsalSchedule() {
 									Rehearsal Schedule
 								</h1>
 								<p className="text-muted-foreground">
-									{event?.name} - {event?.venue}
+									{event?.name}
 								</p>
 								<div className="flex items-center gap-2 mt-1">
 									<div
@@ -950,14 +948,7 @@ export default function RehearsalSchedule() {
 									<SelectContent>
 										{event?.show_dates?.map((date) => (
 											<SelectItem key={date} value={date}>
-												{new Date(
-													date
-												).toLocaleDateString("en-US", {
-													weekday: "long",
-													year: "numeric",
-													month: "long",
-													day: "numeric",
-												})}
+												{formatDateForDropdown(date)}
 											</SelectItem>
 										))}
 									</SelectContent>
@@ -970,10 +961,8 @@ export default function RehearsalSchedule() {
 								<CardHeader>
 									<CardTitle className="flex items-center gap-2">
 										<Clock className="h-5 w-5" />
-										Rehearsal Order -{" "}
-										{new Date(
-											selectedDate
-										).toLocaleDateString()}
+										Rehearsal Schedule -{" "}
+										{formatDateSimple(selectedDate)}
 									</CardTitle>
 									<CardDescription>
 										Drag to reorder or use buttons to move
@@ -1019,13 +1008,13 @@ export default function RehearsalSchedule() {
 																	artist.artist_name
 																}
 															</div>
-															<div className="text-sm text-muted-foreground">
+															{/* <div className="text-sm text-muted-foreground">
 																{artist.style} •{" "}
 																{
 																	artist.performance_duration
 																}{" "}
 																min
-															</div>
+															</div> */}
 														</div>
 														<div className="flex items-center gap-2">
 															{artist.rehearsal_completed && (
@@ -1042,7 +1031,7 @@ export default function RehearsalSchedule() {
 																artist.quality_rating
 															)}
 															<div className="flex gap-1">
-																<Button
+																{/* <Button
 																	size="sm"
 																	variant="outline"
 																	onClick={() =>
@@ -1074,7 +1063,7 @@ export default function RehearsalSchedule() {
 																	}
 																>
 																	↓
-																</Button>
+																</Button> */}
 																<Button
 																	size="sm"
 																	variant={
@@ -1142,13 +1131,13 @@ export default function RehearsalSchedule() {
 														<div className="font-medium">
 															{artist.artist_name}
 														</div>
-														<div className="text-sm text-muted-foreground">
+														{/* <div className="text-sm text-muted-foreground">
 															{artist.style} •{" "}
 															{
 																artist.performance_duration
 															}{" "}
 															min
-														</div>
+														</div> */}
 													</div>
 													<div className="flex items-center gap-2">
 														<div className="flex gap-1">
