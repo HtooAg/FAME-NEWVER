@@ -152,7 +152,11 @@ export default function PerformanceOrder() {
 	const calculateTotalShowTime = () => {
 		return showOrderItems.reduce((total, item) => {
 			if (item.type === "artist" && item.artist) {
-				return total + (item.artist.performance_duration || 0);
+				// Use actual duration if available, otherwise fall back to performance duration
+				const duration = item.artist.actual_duration
+					? Math.ceil(item.artist.actual_duration / 60) // Convert seconds to minutes
+					: item.artist.performance_duration || 0;
+				return total + duration;
 			} else if (item.type === "cue" && item.cue) {
 				return total + (item.cue.duration || 0);
 			}
@@ -178,7 +182,11 @@ export default function PerformanceOrder() {
 		for (let i = 0; i < index; i++) {
 			const item = showOrderItems[i];
 			if (item.type === "artist" && item.artist) {
-				currentTime += item.artist.performance_duration || 0;
+				// Use actual duration if available, otherwise fall back to performance duration
+				const duration = item.artist.actual_duration
+					? Math.ceil(item.artist.actual_duration / 60) // Convert seconds to minutes
+					: item.artist.performance_duration || 0;
+				currentTime += duration;
 			} else if (item.type === "cue" && item.cue) {
 				currentTime += item.cue.duration || 0;
 			}
@@ -188,7 +196,10 @@ export default function PerformanceOrder() {
 		const item = showOrderItems[index];
 		let duration = 0;
 		if (item.type === "artist" && item.artist) {
-			duration = item.artist.performance_duration || 0;
+			// Use actual duration if available, otherwise fall back to performance duration
+			duration = item.artist.actual_duration
+				? Math.ceil(item.artist.actual_duration / 60) // Convert seconds to minutes
+				: item.artist.performance_duration || 0;
 		} else if (item.type === "cue" && item.cue) {
 			duration = item.cue.duration || 0;
 		}
@@ -1996,12 +2007,15 @@ export default function PerformanceOrder() {
 																									.style
 																							}{" "}
 																							•{" "}
-																							{
-																								item
-																									.artist
-																									.performance_duration
-																							}{" "}
-																							min
+																							{item
+																								.artist
+																								.actual_duration
+																								? formatDuration(
+																										item
+																											.artist
+																											.actual_duration
+																								  )
+																								: `${item.artist.performance_duration} min`}
 																							{item
 																								.artist
 																								.quality_rating &&
@@ -2238,23 +2252,18 @@ export default function PerformanceOrder() {
 													</div>
 													<div className="text-sm text-muted-foreground">
 														{artist.style} •{" "}
-														{
-															artist.performance_duration
-														}{" "}
-														min
+														{artist.actual_duration && (
+															<div className="text-xs text-muted-foreground">
+																{formatDuration(
+																	artist.actual_duration
+																)}
+															</div>
+														)}
 														{artist.quality_rating &&
 															getQualityBadge(
 																artist.quality_rating
 															)}
 													</div>
-													{artist.actual_duration && (
-														<div className="text-xs text-muted-foreground">
-															Actual:{" "}
-															{formatDuration(
-																artist.actual_duration
-															)}
-														</div>
-													)}
 												</div>
 												<Button
 													size="sm"

@@ -210,6 +210,29 @@ export default function MCDashboard() {
 						}
 					});
 
+					// Listen for performance order updates
+					socket.on("performance-order-update", (data: any) => {
+						console.log("Performance order update:", data);
+						if (data.eventId === eventId) {
+							fetchPerformanceOrder(); // Refresh data when performance order changes
+						}
+					});
+
+					// Listen for artist assignments and other changes
+					socket.on("artist_assigned", (data: any) => {
+						console.log("Artist assigned:", data);
+						if (data.eventId === eventId) {
+							fetchPerformanceOrder(); // Refresh data when artists are assigned
+						}
+					});
+
+					socket.on("artist_deleted", (data: any) => {
+						console.log("Artist deleted:", data);
+						if (data.eventId === eventId) {
+							fetchPerformanceOrder(); // Refresh data when artists are deleted
+						}
+					});
+
 					socket.on("connect_error", (error: any) => {
 						console.error("Socket.IO connection error:", error);
 						setWsConnected(false);

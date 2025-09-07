@@ -201,6 +201,29 @@ export default function LivePerformanceBoard() {
 						}
 					});
 
+					// Listen for performance order updates
+					socket.on("performance-order-update", (data: any) => {
+						console.log("Performance order update:", data);
+						if (data.eventId === eventId) {
+							fetchData(); // Refresh data when performance order changes
+						}
+					});
+
+					// Listen for artist assignments and other changes
+					socket.on("artist_assigned", (data: any) => {
+						console.log("Artist assigned:", data);
+						if (data.eventId === eventId) {
+							fetchData(); // Refresh data when artists are assigned
+						}
+					});
+
+					socket.on("artist_deleted", (data: any) => {
+						console.log("Artist deleted:", data);
+						if (data.eventId === eventId) {
+							fetchData(); // Refresh data when artists are deleted
+						}
+					});
+
 					socket.on("connect_error", (error: any) => {
 						console.error("Socket.IO connection error:", error);
 						setWsConnected(false);
@@ -939,8 +962,7 @@ export default function LivePerformanceBoard() {
 								</Select>
 							</div>
 							<div className="text-sm text-muted-foreground">
-								{event?.name &&
-									`${event.name}`}
+								{event?.name && `${event.name}`}
 							</div>
 						</div>
 					</div>
