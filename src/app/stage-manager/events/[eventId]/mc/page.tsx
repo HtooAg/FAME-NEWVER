@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
@@ -50,6 +50,12 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { formatDateSimple, formatDateForDropdown } from "@/lib/date-utils";
+import {
+	getStatusColorClasses,
+	getStatusLabel,
+	getStatusBadgeVariant,
+} from "@/lib/status-utils";
+import { formatDuration, getDisplayDuration } from "@/lib/timing-utils";
 
 interface Artist {
 	id: string;
@@ -138,129 +144,31 @@ export default function MCDashboard() {
 	>([]);
 	const [wsConnected, setWsConnected] = useState(false);
 
-	// Initialize Socket.IO connection for emergency alerts
-	useEffect(() => {
-		const connectSocket = () => {
-			try {
-				// Load Socket.IO client and connect
-				const script = document.createElement("script");
-				script.src = "/socket.io/socket.io.js";
-				let socket: any = null;
-
-				script.onload = () => {
-					// @ts-ignore - Socket.IO is loaded dynamically
-					socket = io();
-
-					socket.on("connect", () => {
-						console.log("MC Dashboard Socket.IO connected");
-						setWsConnected(true);
-
-						// Authenticate as MC for this event
-						socket.emit("authenticate", {
-							userId: `mc_${eventId}`,
-							role: "mc",
-							eventId: eventId,
-						});
-					});
-
-					socket.on("disconnect", () => {
-						console.log("MC Dashboard Socket.IO disconnected");
-						setWsConnected(false);
-					});
-
-					// Listen for emergency alerts
-					socket.on("emergency-alert", (data: any) => {
-						console.log("Emergency alert:", data);
-						fetchEmergencyBroadcasts();
-						toast({
-							title: `${data.emergency_code.toUpperCase()} EMERGENCY ALERT`,
-							description: data.message,
-							variant: "destructive",
-						});
-					});
-
-					socket.on("emergency-clear", (data: any) => {
-						console.log("Emergency cleared:", data);
-						fetchEmergencyBroadcasts();
-						toast({
-							title: "Emergency alert cleared",
-							description:
-								"Emergency broadcast has been deactivated",
-						});
-					});
-
-					// Listen for performance status updates
-					socket.on("artist_status_changed", (data: any) => {
-						console.log("Artist status changed:", data);
-						if (data.eventId === eventId) {
-							// Update local state with real-time status change
-							setShowOrderItems((prev) =>
-								prev.map((item) =>
-									item.id === data.id &&
-									item.type === "artist"
-										? {
-												...item,
-												status:
-													data.performance_status ||
-													item.status,
-										  }
-										: item
-								)
-							);
-						}
-					});
-
-					// Listen for performance order updates
-					socket.on("performance-order-update", (data: any) => {
-						console.log("Performance order update:", data);
-						if (data.eventId === eventId) {
-							fetchPerformanceOrder(); // Refresh data when performance order changes
-						}
-					});
-
-					// Listen for artist assignments and other changes
-					socket.on("artist_assigned", (data: any) => {
-						console.log("Artist assigned:", data);
-						if (data.eventId === eventId) {
-							fetchPerformanceOrder(); // Refresh data when artists are assigned
-						}
-					});
-
-					socket.on("artist_deleted", (data: any) => {
-						console.log("Artist deleted:", data);
-						if (data.eventId === eventId) {
-							fetchPerformanceOrder(); // Refresh data when artists are deleted
-						}
-					});
-
-					socket.on("connect_error", (error: any) => {
-						console.error("Socket.IO connection error:", error);
-						setWsConnected(false);
-					});
-				};
-
-				script.onerror = () => {
-					console.error("Failed to load Socket.IO client");
-					setWsConnected(false);
-				};
-
-				document.head.appendChild(script);
-			} catch (error) {
-				console.warn("MC Dashboard Socket.IO setup failed:", error);
-				setWsConnected(false);
-			}
-		};
-
-		connectSocket();
-	}, [eventId]);
-
 	useEffect(() => {
 		if (eventId) {
 			fetchEventData();
 			fetchEventDates();
 			fetchEmergencyBroadcasts();
 		}
-	}, [eventId]);
+
+		// Listen for WebSocket toast events
+		const handleWebSocketToast = (event: CustomEvent) => {
+			const { title, description, variant } = event.detail;
+			toast({ title, description, variant });
+		};
+
+		window.addEventListener(
+			"websocket-toast",
+			handleWebSocketToast as EventListener
+		);
+
+		return () => {
+			window.removeEventListener(
+				"websocket-toast",
+				handleWebSocketToast as EventListener
+			);
+		};
+	}, [eventId, toast]);
 
 	useEffect(() => {
 		if (selectedPerformanceDate) {
@@ -313,7 +221,7 @@ export default function MCDashboard() {
 		}
 	};
 
-	const fetchPerformanceOrder = async () => {
+	const fetchPerformanceOrder = useCallback(async () => {
 		if (!selectedPerformanceDate) return;
 
 		try {
@@ -446,7 +354,72 @@ export default function MCDashboard() {
 		} finally {
 			setLoading(false);
 		}
-	};
+	}, [eventId, selectedPerformanceDate, toast]);
+
+	// Initialize WebSocket manager with auto-refresh
+	useEffect(() => {
+		let wsManager: any = null;
+
+		const initializeWebSocketManager = async () => {
+			try {
+				// Import and initialize WebSocket manager
+				const { createWebSocketManager } = await import(
+					"@/lib/websocket-manager"
+				);
+
+				wsManager = createWebSocketManager({
+					eventId,
+					role: "mc",
+					userId: `mc_${eventId}`,
+					showToasts: true,
+					onConnect: () => {
+						console.log("MC WebSocket connected");
+						setWsConnected(true);
+					},
+					onDisconnect: () => {
+						console.log("MC WebSocket disconnected");
+						setWsConnected(false);
+					},
+					onDataUpdate: () => {
+						console.log("MC data update triggered");
+						// Use setTimeout to ensure functions are available and avoid stale closures
+						setTimeout(() => {
+							if (selectedPerformanceDate) {
+								console.log(
+									"Refreshing MC performance order..."
+								);
+								fetchPerformanceOrder();
+							}
+						}, 100);
+					},
+				});
+
+				await wsManager.initialize();
+
+				// Store reference for cleanup
+				(window as any).mcWsManager = wsManager;
+			} catch (error) {
+				console.error(
+					"Error initializing MC WebSocket manager:",
+					error
+				);
+				setWsConnected(false);
+			}
+		};
+
+		if (eventId) {
+			initializeWebSocketManager();
+		}
+
+		// Cleanup on unmount
+		return () => {
+			if ((window as any).mcWsManager) {
+				(window as any).mcWsManager.destroy();
+				delete (window as any).mcWsManager;
+			}
+		};
+	}, [eventId, fetchPerformanceOrder]);
+
 	const updateMCNotes = async (
 		itemId: string,
 		notes: string,
@@ -489,6 +462,17 @@ export default function MCDashboard() {
 						description:
 							"Artist notes have been saved successfully",
 					});
+
+					// Emit WebSocket event for real-time updates
+					const wsManager = (window as any).mcWsManager;
+					if (wsManager) {
+						wsManager.emit("artist_status_changed", {
+							eventId,
+							artistId: itemId,
+							action: "mc_notes_updated",
+							mc_notes: notes,
+						});
+					}
 				} else {
 					throw new Error("Failed to update artist MC notes");
 				}
@@ -523,6 +507,24 @@ export default function MCDashboard() {
 						title: "MC Notes updated",
 						description: "Cue notes have been saved successfully",
 					});
+
+					// Emit WebSocket event for real-time updates
+					const wsManager = (window as any).mcWsManager;
+					if (wsManager) {
+						// Find the updated cue from the state
+						const updatedItem = showOrderItems.find(
+							(item) => item.id === itemId && item.type === "cue"
+						);
+						wsManager.emit("cue_updated", {
+							eventId,
+							cueId: itemId,
+							action: "mc_notes_updated",
+							cue: updatedItem?.cue
+								? { ...updatedItem.cue, mc_notes: notes }
+								: null,
+							performanceDate: selectedPerformanceDate,
+						});
+					}
 				} else {
 					throw new Error("Failed to update cue MC notes");
 				}
@@ -780,18 +782,7 @@ export default function MCDashboard() {
 			</div>
 		);
 	};
-	if (loading) {
-		return (
-			<div className="min-h-screen flex items-center justify-center bg-background">
-				<div className="text-center">
-					<div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-					<p className="mt-2 text-muted-foreground">
-						Loading MC dashboard...
-					</p>
-				</div>
-			</div>
-		);
-	}
+	// Removed loading state to prevent interruption during auto-refresh
 
 	return (
 		<div className="min-h-screen bg-background">

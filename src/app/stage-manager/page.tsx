@@ -18,6 +18,7 @@ import {
 	Settings,
 	MapPin,
 	ExternalLink,
+	Copy,
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -25,6 +26,7 @@ import { Event } from "@/lib/types/event";
 import { motion } from "framer-motion";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useRouter } from "next/navigation";
+import { useToast } from "@/hooks/use-toast";
 
 export default function StageManagerDashboard() {
 	const [user, setUser] = useState<any>(null);
@@ -35,6 +37,7 @@ export default function StageManagerDashboard() {
 		message: string;
 	} | null>(null);
 	const router = useRouter();
+	const { toast } = useToast();
 
 	// WebSocket for real-time notifications
 	useWebSocket({
@@ -149,6 +152,29 @@ export default function StageManagerDashboard() {
 				return "bg-red-100 text-red-800";
 			default:
 				return "bg-gray-100 text-gray-800";
+		}
+	};
+
+	const copyArtistPortalLink = async (eventId: string) => {
+		const origin =
+			typeof window !== "undefined"
+				? window.location.origin
+				: process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
+		const artistPortalUrl = `${origin}/artist-register/${eventId}`;
+
+		try {
+			await navigator.clipboard.writeText(artistPortalUrl);
+			toast({
+				title: "Link copied!",
+				description: "Artist portal link copied to clipboard",
+			});
+		} catch (error) {
+			console.error("Failed to copy link:", error);
+			toast({
+				title: "Copy failed",
+				description: "Failed to copy link to clipboard",
+				variant: "destructive",
+			});
 		}
 	};
 
@@ -393,20 +419,35 @@ export default function StageManagerDashboard() {
 												</p>
 
 												<div className="space-y-4">
-													<div className="p-2 bg-muted rounded-md text-sm break-all">
-														{(() => {
-															const origin =
-																typeof window !==
-																"undefined"
-																	? window
-																			.location
-																			.origin
-																	: process
-																			.env
-																			.NEXT_PUBLIC_BASE_URL ||
-																	  "http://localhost:3000";
-															return `${origin}/artist-register/${event.id}`;
-														})()}
+													<div className="space-y-2">
+														<div className="p-2 bg-muted rounded-md text-sm break-all">
+															{(() => {
+																const origin =
+																	typeof window !==
+																	"undefined"
+																		? window
+																				.location
+																				.origin
+																		: process
+																				.env
+																				.NEXT_PUBLIC_BASE_URL ||
+																		  "http://localhost:3000";
+																return `${origin}/artist-register/${event.id}`;
+															})()}
+														</div>
+														<Button
+															onClick={() =>
+																copyArtistPortalLink(
+																	event.id
+																)
+															}
+															variant="outline"
+															size="sm"
+															className="w-full"
+														>
+															<Copy className="h-4 w-4 mr-2" />
+															Copy Link
+														</Button>
 													</div>
 													<Link
 														href={`/stage-manager/events/${event.id}`}

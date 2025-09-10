@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
@@ -48,6 +48,12 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { formatDateSimple } from "@/lib/date-utils";
+import {
+	getStatusColorClasses,
+	getStatusLabel,
+	getStatusBadgeVariant,
+} from "@/lib/status-utils";
+import { formatDuration, getDisplayDuration } from "@/lib/timing-utils";
 
 interface Artist {
 	id: string;
@@ -134,123 +140,30 @@ export default function LivePerformanceBoard() {
 	});
 	const [wsConnected, setWsConnected] = useState(false);
 
-	// Initialize Socket.IO connection for real-time updates
-	useEffect(() => {
-		const connectSocket = () => {
-			try {
-				// Load Socket.IO client and connect
-				const script = document.createElement("script");
-				script.src = "/socket.io/socket.io.js";
-				let socket: any = null;
-
-				script.onload = () => {
-					// @ts-ignore - Socket.IO is loaded dynamically
-					socket = io();
-
-					socket.on("connect", () => {
-						console.log("Live Board Socket.IO connected");
-						setWsConnected(true);
-
-						// Authenticate as live board for this event
-						socket.emit("authenticate", {
-							userId: `live_board_${eventId}`,
-							role: "live_board",
-							eventId: eventId,
-						});
-					});
-
-					socket.on("disconnect", () => {
-						console.log("Live Board Socket.IO disconnected");
-						setWsConnected(false);
-					});
-
-					// Listen for emergency alerts
-					socket.on("emergency-alert", (data: any) => {
-						console.log("Emergency alert:", data);
-						fetchEmergencyBroadcasts();
-						toast({
-							title: `${data.emergency_code.toUpperCase()} EMERGENCY ALERT`,
-							description: data.message,
-							variant: "destructive",
-						});
-					});
-
-					socket.on("emergency-clear", (data: any) => {
-						console.log("Emergency cleared:", data);
-						fetchEmergencyBroadcasts();
-						toast({
-							title: "Emergency alert cleared",
-							description:
-								"Emergency broadcast has been deactivated",
-						});
-					});
-
-					// Listen for performance status updates
-					socket.on("artist_status_changed", (data: any) => {
-						console.log("Artist status changed:", data);
-						if (data.eventId === eventId) {
-							fetchData(); // Refresh data when status changes
-						}
-					});
-
-					// Listen for live board updates
-					socket.on("live-board-update", (data: any) => {
-						console.log("Live board update:", data);
-						if (data.eventId === eventId) {
-							fetchData(); // Refresh data when live board updates
-						}
-					});
-
-					// Listen for performance order updates
-					socket.on("performance-order-update", (data: any) => {
-						console.log("Performance order update:", data);
-						if (data.eventId === eventId) {
-							fetchData(); // Refresh data when performance order changes
-						}
-					});
-
-					// Listen for artist assignments and other changes
-					socket.on("artist_assigned", (data: any) => {
-						console.log("Artist assigned:", data);
-						if (data.eventId === eventId) {
-							fetchData(); // Refresh data when artists are assigned
-						}
-					});
-
-					socket.on("artist_deleted", (data: any) => {
-						console.log("Artist deleted:", data);
-						if (data.eventId === eventId) {
-							fetchData(); // Refresh data when artists are deleted
-						}
-					});
-
-					socket.on("connect_error", (error: any) => {
-						console.error("Socket.IO connection error:", error);
-						setWsConnected(false);
-					});
-				};
-
-				script.onerror = () => {
-					console.error("Failed to load Socket.IO client");
-					setWsConnected(false);
-				};
-
-				document.head.appendChild(script);
-			} catch (error) {
-				console.warn("Live Board Socket.IO setup failed:", error);
-				setWsConnected(false);
-			}
-		};
-
-		connectSocket();
-	}, [eventId]);
-
 	useEffect(() => {
 		if (eventId) {
 			fetchEventData();
 			fetchEventDates();
 		}
-	}, [eventId]);
+
+		// Listen for WebSocket toast events
+		const handleWebSocketToast = (event: CustomEvent) => {
+			const { title, description, variant } = event.detail;
+			toast({ title, description, variant });
+		};
+
+		window.addEventListener(
+			"websocket-toast",
+			handleWebSocketToast as EventListener
+		);
+
+		return () => {
+			window.removeEventListener(
+				"websocket-toast",
+				handleWebSocketToast as EventListener
+			);
+		};
+	}, [eventId, toast]);
 
 	useEffect(() => {
 		if (selectedDate) {
@@ -311,7 +224,7 @@ export default function LivePerformanceBoard() {
 			console.error("Error fetching event dates:", error);
 		}
 	};
-	const fetchData = async () => {
+	const fetchData = useCallback(async () => {
 		if (!selectedDate) return;
 
 		try {
@@ -475,9 +388,9 @@ export default function LivePerformanceBoard() {
 		} finally {
 			setLoading(false);
 		}
-	};
+	}, [eventId, selectedDate, toast]);
 
-	const fetchEmergencyBroadcasts = async () => {
+	const fetchEmergencyBroadcasts = useCallback(async () => {
 		try {
 			const response = await fetch(
 				`/api/events/${eventId}/emergency-broadcasts`
@@ -491,7 +404,73 @@ export default function LivePerformanceBoard() {
 		} catch (error) {
 			console.error("Error fetching emergency broadcasts:", error);
 		}
-	};
+	}, [eventId]);
+
+	// Initialize WebSocket manager with auto-refresh
+	useEffect(() => {
+		let wsManager: any = null;
+
+		const initializeWebSocketManager = async () => {
+			try {
+				// Import and initialize WebSocket manager
+				const { createWebSocketManager } = await import(
+					"@/lib/websocket-manager"
+				);
+
+				wsManager = createWebSocketManager({
+					eventId,
+					role: "live_board",
+					userId: `live_board_${eventId}`,
+					showToasts: true,
+					onConnect: () => {
+						console.log("Live Board WebSocket connected");
+						setWsConnected(true);
+					},
+					onDisconnect: () => {
+						console.log("Live Board WebSocket disconnected");
+						setWsConnected(false);
+					},
+					onDataUpdate: () => {
+						console.log("Live Board data update triggered");
+						// Use setTimeout to ensure functions are available and avoid stale closures
+						setTimeout(() => {
+							if (selectedDate) {
+								console.log("Refreshing Live Board data...");
+								fetchData();
+							}
+							console.log(
+								"Refreshing Live Board emergency broadcasts..."
+							);
+							fetchEmergencyBroadcasts();
+						}, 100);
+					},
+				});
+
+				await wsManager.initialize();
+
+				// Store reference for cleanup
+				(window as any).liveBoardWsManager = wsManager;
+			} catch (error) {
+				console.error(
+					"Error initializing Live Board WebSocket manager:",
+					error
+				);
+				setWsConnected(false);
+			}
+		};
+
+		if (eventId) {
+			initializeWebSocketManager();
+		}
+
+		// Cleanup on unmount
+		return () => {
+			if ((window as any).liveBoardWsManager) {
+				(window as any).liveBoardWsManager.destroy();
+				delete (window as any).liveBoardWsManager;
+			}
+		};
+	}, [eventId, fetchData, fetchEmergencyBroadcasts]);
 
 	const createEmergencyBroadcast = async (e: React.FormEvent) => {
 		e.preventDefault();
@@ -612,6 +591,19 @@ export default function LivePerformanceBoard() {
 						" "
 					)}`,
 				});
+
+				// Emit WebSocket event for real-time updates
+				const wsManager = (window as any).liveBoardWsManager;
+				if (wsManager) {
+					wsManager.emit("live-board-update", {
+						eventId,
+						itemId,
+						status,
+						itemType,
+						action: "status_updated",
+						performanceDate: selectedDate,
+					});
+				}
 
 				fetchData();
 			} else {
@@ -734,23 +726,63 @@ export default function LivePerformanceBoard() {
 		return iconMap[cueType] || Video;
 	};
 
+	// Status color functions
+	const getRowColorClasses = (status?: string | null) => {
+		switch (status) {
+			case "completed":
+				return "bg-white border-red-300 text-red-900 shadow-md border-2";
+			case "currently_on_stage":
+				return "bg-white border-green-300 text-green-900 shadow-md border-2";
+			case "next_on_stage":
+				return "bg-white border-yellow-300 text-yellow-900 shadow-md border-2";
+			case "next_on_deck":
+				return "bg-white border-blue-300 text-blue-900 shadow-md border-2";
+			default:
+				return "bg-white border-gray-300 text-gray-900 shadow-md border-2";
+		}
+	};
+
+	const getStatusBadge = (status?: string | null) => {
+		switch (status) {
+			case "completed":
+				return (
+					<Badge className="bg-red-500 text-white hover:bg-red-500 cursor-default">
+						Completed
+					</Badge>
+				);
+			case "currently_on_stage":
+				return (
+					<Badge className="bg-green-500 text-white hover:bg-green-500 cursor-default">
+						Currently On Stage
+					</Badge>
+				);
+			case "next_on_stage":
+				return (
+					<Badge className="bg-yellow-500 text-white hover:bg-yellow-500 cursor-default">
+						Next On Stage
+					</Badge>
+				);
+			case "next_on_deck":
+				return (
+					<Badge className="bg-blue-500 text-white hover:bg-blue-500 cursor-default">
+						Next On Deck
+					</Badge>
+				);
+			default:
+				return (
+					<Badge variant="outline" className="cursor-default">
+						Not Started
+					</Badge>
+				);
+		}
+	};
+
 	// Get items by status and position
 	const getCurrentItem = () => performanceItems[currentPerformerIndex];
 	const getNextItem = () => performanceItems[currentPerformerIndex + 1];
 	const getOnDeckItem = () => performanceItems[currentPerformerIndex + 2];
 
-	if (loading) {
-		return (
-			<div className="min-h-screen flex items-center justify-center bg-background">
-				<div className="text-center">
-					<div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-					<p className="mt-2 text-muted-foreground">
-						Loading live performance board...
-					</p>
-				</div>
-			</div>
-		);
-	}
+	// Removed loading state to prevent interruption during auto-refresh
 	return (
 		<div className="min-h-screen bg-background">
 			<header className="border-b border-border bg-card">

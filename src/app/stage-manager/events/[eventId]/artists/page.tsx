@@ -34,6 +34,20 @@ import {
 	Plus,
 	Copy,
 	X,
+	User,
+	Music,
+	Image,
+	Lightbulb,
+	Palette,
+	Navigation,
+	Globe,
+	Instagram,
+	Facebook,
+	Youtube,
+	Download,
+	Play,
+	Phone,
+	Mail,
 } from "lucide-react";
 import {
 	Dialog,
@@ -64,6 +78,7 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { AudioPlayer } from "@/components/ui/audio-player";
 import { VideoPlayer, ImageViewer } from "@/components/ui/video-player";
@@ -71,6 +86,12 @@ import { LazyMediaLoader } from "@/components/ui/lazy-media-loader";
 import { ArtistStatusBadge } from "@/components/ui/artist-status-badge";
 import { ArtistStatusDialog } from "@/components/ui/artist-status-dialog";
 import { formatDateSimple } from "@/lib/date-utils";
+import {
+	getStatusColorClasses,
+	getStatusLabel,
+	getStatusBadgeVariant,
+} from "@/lib/status-utils";
+import { formatDuration } from "@/lib/timing-utils";
 
 interface Event {
 	id: string;
@@ -129,16 +150,27 @@ export default function ArtistManagement() {
 			fetchEvent();
 			fetchArtists();
 			// Initialize WebSocket connection for real-time updates
-			const cleanup = initializeWebSocket();
-
-			// Cleanup function
-			return () => {
-				if (cleanup) {
-					cleanup();
-				}
-			};
+			initializeWebSocket();
 		}
-	}, [eventId]);
+
+		// Listen for WebSocket toast events
+		const handleWebSocketToast = (event: CustomEvent) => {
+			const { title, description, variant } = event.detail;
+			toast({ title, description, variant });
+		};
+
+		window.addEventListener(
+			"websocket-toast",
+			handleWebSocketToast as EventListener
+		);
+
+		return () => {
+			window.removeEventListener(
+				"websocket-toast",
+				handleWebSocketToast as EventListener
+			);
+		};
+	}, [eventId, toast]);
 
 	const fetchEvent = async () => {
 		try {
@@ -217,7 +249,7 @@ export default function ArtistManagement() {
 		}
 	};
 
-	const initializeWebSocket = () => {
+	const initializeWebSocket = async () => {
 		// Prevent multiple initializations
 		if (wsInitialized) {
 			console.log("WebSocket already initialized, skipping...");
@@ -226,164 +258,48 @@ export default function ArtistManagement() {
 
 		setWsInitialized(true);
 
-		// Initialize WebSocket connection for real-time artist submissions
 		try {
-			// Use Socket.IO client instead of raw WebSocket
-			const script = document.createElement("script");
-			script.src = "/socket.io/socket.io.js";
-			let socket: any = null;
+			// Import and initialize WebSocket manager
+			const { createWebSocketManager } = await import(
+				"@/lib/websocket-manager"
+			);
 
-			script.onload = () => {
-				// @ts-ignore
-				socket = io();
-
-				socket.on("connect", () => {
-					console.log("Socket.IO connected");
+			const wsManager = createWebSocketManager({
+				eventId,
+				role: "stage_manager",
+				userId: `stage_manager_artists_${eventId}`,
+				showToasts: true,
+				onConnect: () => {
+					console.log("Artists WebSocket connected");
 					setWsConnected(true);
-				});
-
-				socket.on("disconnect", () => {
-					console.log("Socket.IO disconnected");
+				},
+				onDisconnect: () => {
+					console.log("Artists WebSocket disconnected");
 					setWsConnected(false);
-				});
+				},
+				onDataUpdate: () => {
+					console.log("Artists data update triggered");
+					fetchArtists();
+				},
+			});
 
-				socket.on("artist_registered", (message: any) => {
-					console.log("Artist registered:", message);
+			await wsManager.initialize();
 
-					const newArtist = {
-						id: message.data.id,
-						artist_name:
-							message.data.artistName || message.data.artist_name,
-						real_name:
-							message.data.realName || message.data.real_name,
-						email: message.data.email,
-						style: message.data.style,
-						performance_duration:
-							message.data.performanceDuration ||
-							message.data.performance_duration,
-						performance_date:
-							message.data.performanceDate ||
-							message.data.performance_date,
-						status: message.data.status || "pending",
-						created_at:
-							message.data.createdAt || message.data.created_at,
-						actual_duration:
-							message.data.musicTracks?.find(
-								(track: any) => track.is_main_track
-							)?.duration || null,
-					};
-
-					// Check if artist already exists to prevent duplicates
-					setArtists((prev) => {
-						const existingIndex = prev.findIndex(
-							(artist) => artist.id === newArtist.id
-						);
-						console.log(
-							`Artist ${newArtist.id} exists at index:`,
-							existingIndex
-						);
-						console.log(
-							"Current artists:",
-							prev.map((a) => a.id)
-						);
-
-						if (existingIndex !== -1) {
-							// Update existing artist
-							console.log("Updating existing artist");
-							const updated = [...prev];
-							updated[existingIndex] = newArtist;
-							return updated;
-						} else {
-							// Add new artist
-							console.log("Adding new artist");
-							return [newArtist, ...prev];
-						}
-					});
-
-					toast({
-						title: "New Artist Registration",
-						description: `${newArtist.artist_name} has submitted their application`,
-					});
-				});
-
-				socket.on("artist_assigned", (message: any) => {
-					console.log("Artist assigned:", message);
-
-					setArtists((prev) =>
-						prev.map((artist) =>
-							artist.id === message.data.id
-								? {
-										...artist,
-										performance_date:
-											message.data.performance_date,
-								  }
-								: artist
-						)
-					);
-
-					toast({
-						title: "Artist Assignment Updated",
-						description: `${
-							message.data.artistName || message.data.artist_name
-						} has been assigned`,
-					});
-				});
-
-				socket.on("artist_status_changed", (message: any) => {
-					console.log("Artist status changed:", message);
-
-					setArtists((prev) =>
-						prev.map((artist) =>
-							artist.id === message.data.id
-								? {
-										...artist,
-										status: message.data.status,
-										...message.data,
-								  }
-								: artist
-						)
-					);
-
-					toast({
-						title: "Artist Status Updated",
-						description: `${
-							message.data.artistName || message.data.artist_name
-						} status changed`,
-					});
-				});
-
-				socket.on("artist_deleted", (message: any) => {
-					console.log("Artist deleted:", message);
-
-					setArtists((prev) =>
-						prev.filter((artist) => artist.id !== message.data.id)
-					);
-
-					toast({
-						title: "Artist Removed",
-						description: `${
-							message.data.artistName || message.data.artist_name
-						} has been removed`,
-						variant: "destructive",
-					});
-				});
-			};
-			document.head.appendChild(script);
+			// Store reference for cleanup and emitting events
+			(window as any).artistsWsManager = wsManager;
 
 			// Return cleanup function
 			return () => {
-				if (socket) {
-					socket.disconnect();
-				}
-				if (script.parentNode) {
-					script.parentNode.removeChild(script);
+				if ((window as any).artistsWsManager) {
+					(window as any).artistsWsManager.destroy();
+					delete (window as any).artistsWsManager;
 				}
 				setWsInitialized(false);
 			};
 		} catch (error) {
 			console.error("Failed to initialize WebSocket:", error);
 			setWsInitialized(false);
-			return () => {}; // Return empty cleanup function on error
+			throw error;
 		}
 	};
 
@@ -417,6 +333,22 @@ export default function ArtistManagement() {
 							: artist
 					)
 				);
+
+				// Emit WebSocket event for real-time updates
+				const wsManager = (window as any).artistsWsManager;
+				if (wsManager) {
+					wsManager.emit(
+						performanceDate
+							? "artist_assigned"
+							: "artist_unassigned",
+						{
+							eventId,
+							artistId,
+							performance_date: performanceDate,
+							action: performanceDate ? "assigned" : "unassigned",
+						}
+					);
+				}
 
 				toast({
 					title: performanceDate
@@ -464,6 +396,16 @@ export default function ArtistManagement() {
 			if (response.ok) {
 				// Update local state immediately for better UX
 				setArtists(artists.filter((artist) => artist.id !== artistId));
+
+				// Emit WebSocket event for real-time updates
+				const wsManager = (window as any).artistsWsManager;
+				if (wsManager) {
+					wsManager.emit("artist_deleted", {
+						eventId,
+						artistId,
+						action: "deleted",
+					});
+				}
 
 				toast({
 					title: "Artist deleted",
@@ -936,7 +878,7 @@ Please use these credentials to access your artist dashboard.`;
 							</CardContent>
 						</Card>
 
-						{/* Assigned Artists */}
+						{/* Assigned Artists - Grouped by Performance Date */}
 						<Card>
 							<CardHeader>
 								<CardTitle className="flex items-center gap-2">
@@ -954,156 +896,232 @@ Please use these credentials to access your artist dashboard.`;
 										No artists assigned yet
 									</div>
 								) : (
-									<Table>
-										<TableHeader>
-											<TableRow>
-												<TableHead>
-													Artist Name
-												</TableHead>
-												<TableHead>Real Name</TableHead>
-												<TableHead>Style</TableHead>
-												<TableHead>Duration</TableHead>
-												{/* <TableHead>Status</TableHead> */}
-												<TableHead>
-													Performance Date
-												</TableHead>
-												<TableHead>Actions</TableHead>
-											</TableRow>
-										</TableHeader>
-										<TableBody>
-											{assignedArtists.map((artist) => (
-												<TableRow key={artist.id}>
-													<TableCell className="font-medium">
-														{artist.artist_name}
-													</TableCell>
-													<TableCell>
-														{artist.real_name}
-													</TableCell>
-													<TableCell>
-														{artist.style}
-													</TableCell>
-													<TableCell>
-														{/* {
-															artist.performance_duration
+									<div className="space-y-8">
+										{(() => {
+											// Group artists by performance date
+											const groupedArtists =
+												assignedArtists.reduce(
+													(groups, artist) => {
+														const date =
+															artist.performance_date ||
+															"unassigned";
+														if (!groups[date]) {
+															groups[date] = [];
 														}
-														min */}
-														{artist.actual_duration && (
-															<span className="text-muted-foreground ml-1">
-																{formatDuration(
-																	artist.actual_duration
-																)}
-															</span>
-														)}
-													</TableCell>
-													{/* <TableCell>
-														<ArtistStatusBadge
-															status={
-																artist.status
-															}
-														/>
-													</TableCell> */}
-													<TableCell>
-														{artist.performance_date &&
-															formatDateSimple(
-																artist.performance_date
-															)}
-													</TableCell>
-													<TableCell>
-														<div className="flex items-center gap-2">
-															<Button
-																variant="outline"
-																size="sm"
-																onClick={() =>
-																	viewArtistDetails(
-																		artist.id
+														groups[date].push(
+															artist
+														);
+														return groups;
+													},
+													{} as Record<
+														string,
+														Artist[]
+													>
+												);
+
+											// Sort dates and create day labels
+											const sortedDates = Object.keys(
+												groupedArtists
+											)
+												.filter(
+													(date) =>
+														date !== "unassigned"
+												)
+												.sort(
+													(a, b) =>
+														new Date(a).getTime() -
+														new Date(b).getTime()
+												);
+
+											return sortedDates.map(
+												(date, index) => {
+													const dayNumber = index + 1;
+													const artistsForDate =
+														groupedArtists[date];
+
+													return (
+														<div
+															key={date}
+															className="space-y-4"
+														>
+															{/* Day Header */}
+															<div className="flex items-center gap-4">
+																<div className="bg-primary text-primary-foreground px-4 py-2 rounded-lg font-semibold">
+																	Day{" "}
+																	{dayNumber}
+																</div>
+																<div className="text-lg font-medium text-foreground">
+																	{formatDateSimple(
+																		date
+																	)}
+																</div>
+																<div className="text-sm text-muted-foreground">
+																	(
+																	{
+																		artistsForDate.length
+																	}{" "}
+																	artist
+																	{artistsForDate.length !==
+																	1
+																		? "s"
+																		: ""}
 																	)
-																}
-															>
-																<Eye className="h-4 w-4" />
-															</Button>
-															{/* <Button
-																variant="outline"
-																size="sm"
-																onClick={() =>
-																	openStatusDialog(
-																		artist
-																	)
-																}
-															>
-																<CheckCircle className="h-4 w-4" />
-															</Button> */}
-															<Button
-																variant="outline"
-																size="sm"
-																onClick={() =>
-																	assignPerformanceDate(
-																		artist.id,
-																		null
-																	)
-																}
-															>
-																<X className="h-4 w-4" />
-															</Button>
-															<AlertDialog>
-																<AlertDialogTrigger
-																	asChild
-																>
-																	<Button
-																		variant="outline"
-																		size="sm"
-																		className="text-destructive hover:text-destructive"
-																	>
-																		<Trash2 className="h-4 w-4" />
-																	</Button>
-																</AlertDialogTrigger>
-																<AlertDialogContent>
-																	<AlertDialogHeader>
-																		<AlertDialogTitle>
-																			Delete
-																			Artist
-																		</AlertDialogTitle>
-																		<AlertDialogDescription>
-																			Are
-																			you
-																			sure
-																			you
-																			want
-																			to
-																			delete{" "}
-																			{
-																				artist.artist_name
-																			}
-																			?
-																			This
-																			action
-																			cannot
-																			be
-																			undone.
-																		</AlertDialogDescription>
-																	</AlertDialogHeader>
-																	<AlertDialogFooter>
-																		<AlertDialogCancel>
-																			Cancel
-																		</AlertDialogCancel>
-																		<AlertDialogAction
-																			onClick={() =>
-																				deleteArtist(
-																					artist.id
-																				)
-																			}
-																			className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-																		>
-																			Delete
-																		</AlertDialogAction>
-																	</AlertDialogFooter>
-																</AlertDialogContent>
-															</AlertDialog>
+																</div>
+															</div>
+
+															{/* Artists Table for this day */}
+															<div className="border rounded-lg">
+																<Table>
+																	<TableHeader>
+																		<TableRow>
+																			<TableHead>
+																				Artist
+																				Name
+																			</TableHead>
+																			<TableHead>
+																				Real
+																				Name
+																			</TableHead>
+																			<TableHead>
+																				Style
+																			</TableHead>
+																			<TableHead>
+																				Duration
+																			</TableHead>
+																			<TableHead>
+																				Actions
+																			</TableHead>
+																		</TableRow>
+																	</TableHeader>
+																	<TableBody>
+																		{artistsForDate.map(
+																			(
+																				artist
+																			) => (
+																				<TableRow
+																					key={
+																						artist.id
+																					}
+																				>
+																					<TableCell className="font-medium">
+																						{
+																							artist.artist_name
+																						}
+																					</TableCell>
+																					<TableCell>
+																						{
+																							artist.real_name
+																						}
+																					</TableCell>
+																					<TableCell>
+																						{
+																							artist.style
+																						}
+																					</TableCell>
+																					<TableCell>
+																						{artist.actual_duration && (
+																							<span className="text-muted-foreground">
+																								{formatDuration(
+																									artist.actual_duration
+																								)}
+																							</span>
+																						)}
+																					</TableCell>
+																					<TableCell>
+																						<div className="flex items-center gap-2">
+																							<Button
+																								variant="outline"
+																								size="sm"
+																								onClick={() =>
+																									viewArtistDetails(
+																										artist.id
+																									)
+																								}
+																							>
+																								<Eye className="h-4 w-4" />
+																							</Button>
+																							<Button
+																								variant="outline"
+																								size="sm"
+																								onClick={() =>
+																									assignPerformanceDate(
+																										artist.id,
+																										null
+																									)
+																								}
+																								title="Unassign from this date"
+																							>
+																								<X className="h-4 w-4" />
+																							</Button>
+																							<AlertDialog>
+																								<AlertDialogTrigger
+																									asChild
+																								>
+																									<Button
+																										variant="outline"
+																										size="sm"
+																										className="text-destructive hover:text-destructive"
+																									>
+																										<Trash2 className="h-4 w-4" />
+																									</Button>
+																								</AlertDialogTrigger>
+																								<AlertDialogContent>
+																									<AlertDialogHeader>
+																										<AlertDialogTitle>
+																											Delete
+																											Artist
+																										</AlertDialogTitle>
+																										<AlertDialogDescription>
+																											Are
+																											you
+																											sure
+																											you
+																											want
+																											to
+																											delete{" "}
+																											{
+																												artist.artist_name
+																											}
+
+																											?
+																											This
+																											action
+																											cannot
+																											be
+																											undone.
+																										</AlertDialogDescription>
+																									</AlertDialogHeader>
+																									<AlertDialogFooter>
+																										<AlertDialogCancel>
+																											Cancel
+																										</AlertDialogCancel>
+																										<AlertDialogAction
+																											onClick={() =>
+																												deleteArtist(
+																													artist.id
+																												)
+																											}
+																											className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+																										>
+																											Delete
+																										</AlertDialogAction>
+																									</AlertDialogFooter>
+																								</AlertDialogContent>
+																							</AlertDialog>
+																						</div>
+																					</TableCell>
+																				</TableRow>
+																			)
+																		)}
+																	</TableBody>
+																</Table>
+															</div>
 														</div>
-													</TableCell>
-												</TableRow>
-											))}
-										</TableBody>
-									</Table>
+													);
+												}
+											);
+										})()}
+									</div>
 								)}
 							</CardContent>
 						</Card>
@@ -1113,226 +1131,308 @@ Please use these credentials to access your artist dashboard.`;
 							open={isDetailDialogOpen}
 							onOpenChange={setIsDetailDialogOpen}
 						>
-							<DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+							<DialogContent className="max-w-7xl max-h-[90vh] overflow-y-auto">
 								<DialogHeader>
 									<DialogTitle>
 										Artist Details -{" "}
 										{selectedArtist?.artist_name}
 									</DialogTitle>
 									<DialogDescription>
-										Complete artist information and media
-										files
+										Complete artist information, media
+										files, and technical requirements
 									</DialogDescription>
 								</DialogHeader>
 
 								{selectedArtist && (
-									<div className="space-y-6">
-										{/* Basic Information and Performance Details */}
-										<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-											<Card>
-												<CardHeader>
-													<CardTitle className="text-lg">
-														Basic Information
-													</CardTitle>
-												</CardHeader>
-												<CardContent className="space-y-3">
-													<div>
-														<p className="text-sm text-muted-foreground">
-															Artist Name
-														</p>
-														<p className="font-medium">
-															{
-																selectedArtist.artist_name
-															}
-														</p>
-													</div>
-													<div>
-														<p className="text-sm text-muted-foreground">
-															Real Name
-														</p>
-														<p className="font-medium">
-															{
-																selectedArtist.real_name
-															}
-														</p>
-													</div>
-													<div>
-														<p className="text-sm text-muted-foreground">
-															Email
-														</p>
-														<p className="font-medium">
-															{
-																selectedArtist.email
-															}
-														</p>
-													</div>
-													{(selectedArtist as any)
-														.phone && (
-														<div>
-															<p className="text-sm text-muted-foreground">
-																Phone
-															</p>
-															<p className="font-medium">
-																{
-																	(
-																		selectedArtist as any
-																	).phone
-																}
-															</p>
-														</div>
-													)}
-													<div>
-														<p className="text-sm text-muted-foreground">
-															Performance Style
-														</p>
-														<p className="font-medium">
-															{
-																selectedArtist.style
-															}
-														</p>
-													</div>
-													{(selectedArtist as any)
-														.performanceType && (
-														<div>
-															<p className="text-sm text-muted-foreground">
-																Performance Type
-															</p>
-															<p className="font-medium">
-																{
-																	(
-																		selectedArtist as any
-																	)
-																		.performanceType
-																}
-															</p>
-														</div>
-													)}
-													<div>
-														<p className="text-sm text-muted-foreground">
-															Duration
-														</p>
-														<p className="font-medium">
-															{
-																selectedArtist.performance_duration
-															}{" "}
-															minutes
-														</p>
-													</div>
-													<div>
-														<p className="text-sm text-muted-foreground">
-															Status
-														</p>
-														<ArtistStatusBadge
-															status={
-																selectedArtist.status
-															}
-														/>
-													</div>
-												</CardContent>
-											</Card>
+									<Tabs
+										defaultValue="overview"
+										className="w-full"
+									>
+										<TabsList className="grid w-full grid-cols-5">
+											<TabsTrigger value="overview">
+												Overview
+											</TabsTrigger>
+											<TabsTrigger value="music">
+												Music
+											</TabsTrigger>
+											<TabsTrigger value="technical">
+												Technical
+											</TabsTrigger>
+											<TabsTrigger value="gallery">
+												Gallery
+											</TabsTrigger>
+											<TabsTrigger value="event">
+												Event Details
+											</TabsTrigger>
+										</TabsList>
 
-											<Card>
-												<CardHeader>
-													<CardTitle className="text-lg">
-														Performance Details
-													</CardTitle>
-												</CardHeader>
-												<CardContent className="space-y-3">
-													{(selectedArtist as any)
-														.biography && (
-														<div>
-															<p className="text-sm text-muted-foreground">
-																Biography
-															</p>
-															<p className="text-sm">
-																{
-																	(
-																		selectedArtist as any
-																	).biography
-																}
-															</p>
-														</div>
-													)}
-													{(selectedArtist as any)
-														.equipment && (
-														<div>
-															<p className="text-sm text-muted-foreground">
-																Equipment
-															</p>
-															<p className="text-sm">
-																{
-																	(
-																		selectedArtist as any
-																	).equipment
-																}
-															</p>
-														</div>
-													)}
-													{(selectedArtist as any)
-														.lightRequests && (
-														<div>
-															<p className="text-sm text-muted-foreground">
-																Light Requests
-															</p>
-															<p className="text-sm">
-																{
-																	(
-																		selectedArtist as any
-																	)
-																		.lightRequests
-																}
-															</p>
-														</div>
-													)}
-													{(selectedArtist as any)
-														.mcNotes && (
-														<div>
-															<p className="text-sm text-muted-foreground">
-																MC Notes
-															</p>
-															<p className="text-sm">
-																{
-																	(
-																		selectedArtist as any
-																	).mcNotes
-																}
-															</p>
-														</div>
-													)}
-													{(selectedArtist as any)
-														.stageManagerNotes && (
-														<div>
-															<p className="text-sm text-muted-foreground">
-																Stage Manager
-																Notes
-															</p>
-															<p className="text-sm">
-																{
-																	(
-																		selectedArtist as any
-																	)
-																		.stageManagerNotes
-																}
-															</p>
-														</div>
-													)}
-												</CardContent>
-											</Card>
-										</div>
-
-										{/* Music Tracks */}
-										{(selectedArtist as any).musicTracks &&
-											(selectedArtist as any).musicTracks
-												.length > 0 && (
+										{/* Overview Tab */}
+										<TabsContent
+											value="overview"
+											className="space-y-6"
+										>
+											<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+												{/* Basic Information */}
 												<Card>
 													<CardHeader>
-														<CardTitle className="text-lg">
-															Music Tracks
+														<CardTitle className="flex items-center gap-2">
+															<User className="h-5 w-5" />
+															Basic Information
+														</CardTitle>
+													</CardHeader>
+													<CardContent className="space-y-4">
+														<div>
+															<p className="text-sm text-muted-foreground">
+																Artist Name
+															</p>
+															<p className="font-medium">
+																{
+																	selectedArtist.artist_name
+																}
+															</p>
+														</div>
+														<div>
+															<p className="text-sm text-muted-foreground">
+																Real Name
+															</p>
+															<p className="font-medium">
+																{
+																	selectedArtist.real_name
+																}
+															</p>
+														</div>
+														<div className="flex items-center gap-2">
+															<Mail className="h-4 w-4 text-muted-foreground" />
+															<p className="text-sm">
+																{
+																	selectedArtist.email
+																}
+															</p>
+														</div>
+														{(selectedArtist as any)
+															.phone && (
+															<div className="flex items-center gap-2">
+																<Phone className="h-4 w-4 text-muted-foreground" />
+																<p className="text-sm">
+																	{
+																		(
+																			selectedArtist as any
+																		).phone
+																	}
+																</p>
+															</div>
+														)}
+														<div>
+															<p className="text-sm text-muted-foreground">
+																Performance
+																Style
+															</p>
+															<p className="font-medium">
+																{
+																	selectedArtist.style
+																}
+															</p>
+														</div>
+														{(selectedArtist as any)
+															.performanceType && (
+															<div>
+																<p className="text-sm text-muted-foreground">
+																	Performance
+																	Type
+																</p>
+																<p className="font-medium">
+																	{
+																		(
+																			selectedArtist as any
+																		)
+																			.performanceType
+																	}
+																</p>
+															</div>
+														)}
+														<div>
+															<p className="text-sm text-muted-foreground">
+																Duration
+															</p>
+															<p className="font-medium">
+																{
+																	selectedArtist.performance_duration
+																}{" "}
+																minutes
+															</p>
+														</div>
+													</CardContent>
+												</Card>
+
+												{/* Biography */}
+												<Card>
+													<CardHeader>
+														<CardTitle>
+															Biography
 														</CardTitle>
 													</CardHeader>
 													<CardContent>
-														<div className="space-y-4">
+														<p className="text-sm leading-relaxed">
 															{(
+																selectedArtist as any
+															).biography ||
+																"No biography provided"}
+														</p>
+													</CardContent>
+												</Card>
+											</div>
+
+											{/* Social Media Links */}
+											{(selectedArtist as any)
+												.socialMedia && (
+												<Card>
+													<CardHeader>
+														<CardTitle className="flex items-center gap-2">
+															<Globe className="h-5 w-5" />
+															Social Media & Links
+														</CardTitle>
+													</CardHeader>
+													<CardContent>
+														<div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+															{(
+																selectedArtist as any
+															).socialMedia
+																?.instagram && (
+																<a
+																	href={
+																		(
+																			selectedArtist as any
+																		)
+																			.socialMedia
+																			.instagram
+																	}
+																	target="_blank"
+																	rel="noopener noreferrer"
+																	className="flex items-center gap-2 p-2 rounded-lg border hover:bg-muted transition-colors"
+																>
+																	<Instagram className="h-4 w-4 text-pink-600" />
+																	<span className="text-sm">
+																		Instagram
+																	</span>
+																</a>
+															)}
+															{(
+																selectedArtist as any
+															).socialMedia
+																?.facebook && (
+																<a
+																	href={
+																		(
+																			selectedArtist as any
+																		)
+																			.socialMedia
+																			.facebook
+																	}
+																	target="_blank"
+																	rel="noopener noreferrer"
+																	className="flex items-center gap-2 p-2 rounded-lg border hover:bg-muted transition-colors"
+																>
+																	<Facebook className="h-4 w-4 text-blue-600" />
+																	<span className="text-sm">
+																		Facebook
+																	</span>
+																</a>
+															)}
+															{(
+																selectedArtist as any
+															).socialMedia
+																?.youtube && (
+																<a
+																	href={
+																		(
+																			selectedArtist as any
+																		)
+																			.socialMedia
+																			.youtube
+																	}
+																	target="_blank"
+																	rel="noopener noreferrer"
+																	className="flex items-center gap-2 p-2 rounded-lg border hover:bg-muted transition-colors"
+																>
+																	<Youtube className="h-4 w-4 text-red-600" />
+																	<span className="text-sm">
+																		YouTube
+																	</span>
+																</a>
+															)}
+															{(
+																selectedArtist as any
+															).socialMedia
+																?.website && (
+																<a
+																	href={
+																		(
+																			selectedArtist as any
+																		)
+																			.socialMedia
+																			.website
+																	}
+																	target="_blank"
+																	rel="noopener noreferrer"
+																	className="flex items-center gap-2 p-2 rounded-lg border hover:bg-muted transition-colors"
+																>
+																	<Globe className="h-4 w-4 text-green-600" />
+																	<span className="text-sm">
+																		Website
+																	</span>
+																</a>
+															)}
+															{(
+																selectedArtist as any
+															).showLink && (
+																<a
+																	href={
+																		(
+																			selectedArtist as any
+																		)
+																			.showLink
+																	}
+																	target="_blank"
+																	rel="noopener noreferrer"
+																	className="flex items-center gap-2 p-2 rounded-lg border hover:bg-muted transition-colors"
+																>
+																	<Play className="h-4 w-4 text-purple-600" />
+																	<span className="text-sm">
+																		Demo
+																		Video
+																	</span>
+																</a>
+															)}
+														</div>
+													</CardContent>
+												</Card>
+											)}
+										</TabsContent>
+
+										{/* Music Tab */}
+										<TabsContent
+											value="music"
+											className="space-y-6"
+										>
+											<Card>
+												<CardHeader>
+													<CardTitle className="flex items-center gap-2">
+														<Music className="h-5 w-5" />
+														Music Tracks
+													</CardTitle>
+													<CardDescription>
+														Uploaded music tracks
+														for the performance
+													</CardDescription>
+												</CardHeader>
+												<CardContent>
+													<div className="space-y-4">
+														{(selectedArtist as any)
+															.musicTracks &&
+														(selectedArtist as any)
+															.musicTracks
+															.length > 0 ? (
+															(
 																selectedArtist as any
 															).musicTracks.map(
 																(
@@ -1343,74 +1443,422 @@ Please use these credentials to access your artist dashboard.`;
 																		key={
 																			index
 																		}
-																		className="border rounded-lg p-4"
+																		className="border rounded-lg p-4 space-y-3"
 																	>
-																		<div className="flex items-center justify-between mb-2">
-																			<h4 className="font-medium">
-																				{
-																					track.song_title
-																				}
-																			</h4>
-																			{track.is_main_track && (
-																				<Badge>
-																					Main
-																					Track
-																				</Badge>
-																			)}
-																		</div>
-																		<div className="grid grid-cols-2 gap-4 text-sm">
+																		<div className="flex items-center justify-between">
 																			<div>
-																				<span className="text-muted-foreground">
-																					Duration:
-																				</span>{" "}
-																				{formatDuration(
-																					track.duration
-																				)}
+																				<h4 className="font-medium">
+																					{
+																						track.song_title
+																					}
+																				</h4>
+																				<p className="text-sm text-muted-foreground">
+																					Duration:{" "}
+																					{formatDuration(
+																						track.duration
+																					)}{" "}
+																					-
+																					Tempo:{" "}
+																					{
+																						track.tempo
+																					}
+																				</p>
 																			</div>
-																			<div>
-																				<span className="text-muted-foreground">
-																					Tempo:
-																				</span>{" "}
-																				{
-																					track.tempo
-																				}
+																			<div className="flex items-center gap-2">
+																				{track.is_main_track && (
+																					<Badge variant="secondary">
+																						Main
+																						Track
+																					</Badge>
+																				)}
 																			</div>
 																		</div>
 																		{track.notes && (
-																			<p className="text-sm text-muted-foreground mt-2">
+																			<p className="text-sm text-muted-foreground">
 																				{
 																					track.notes
 																				}
 																			</p>
 																		)}
 																		{track.file_url && (
-																			<div className="mt-3">
+																			<div className="space-y-2">
 																				<AudioPlayer
-																					src={
-																						track.file_url
+																					track={
+																						track
 																					}
+																					onError={(
+																						error
+																					) => {
+																						console.error(
+																							"Audio playback error:",
+																							error
+																						);
+																					}}
 																				/>
+																				<div className="flex justify-end">
+																					<Button
+																						variant="outline"
+																						size="sm"
+																						onClick={async () => {
+																							const {
+																								downloadFile,
+																							} =
+																								await import(
+																									"@/lib/media-utils"
+																								);
+																							await downloadFile(
+																								track.file_url,
+																								track.song_title
+																							);
+																						}}
+																						className="flex items-center gap-2"
+																					>
+																						<Download className="h-3 w-3" />
+																						Download
+																					</Button>
+																				</div>
 																			</div>
 																		)}
 																	</div>
 																)
-															)}
-														</div>
-													</CardContent>
-												</Card>
-											)}
+															)
+														) : (
+															<p className="text-center text-muted-foreground py-8">
+																No music tracks
+																uploaded yet
+															</p>
+														)}
+													</div>
+												</CardContent>
+											</Card>
+										</TabsContent>
 
-										{/* Gallery Files */}
-										{(selectedArtist as any).galleryFiles &&
-											(selectedArtist as any).galleryFiles
-												.length > 0 && (
+										{/* Technical Tab */}
+										<TabsContent
+											value="technical"
+											className="space-y-6"
+										>
+											<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+												{/* Costume & Lighting */}
 												<Card>
 													<CardHeader>
-														<CardTitle className="text-lg">
-															Gallery Files
+														<CardTitle className="flex items-center gap-2">
+															<Palette className="h-5 w-5" />
+															Costume & Lighting
+														</CardTitle>
+													</CardHeader>
+													<CardContent className="space-y-4">
+														{(selectedArtist as any)
+															.costumeColor && (
+															<div>
+																<p className="text-sm text-muted-foreground">
+																	Costume
+																	Color
+																</p>
+																<div className="flex items-center gap-2">
+																	<div
+																		className="w-6 h-6 rounded border-2 border-muted-foreground/20"
+																		style={{
+																			backgroundColor:
+																				(
+																					selectedArtist as any
+																				)
+																					.costumeColor ===
+																				"blue"
+																					? "#0000ff"
+																					: (
+																							selectedArtist as any
+																					  )
+																							.costumeColor ===
+																					  "red"
+																					? "#ff0000"
+																					: (
+																							selectedArtist as any
+																					  )
+																							.costumeColor ===
+																					  "green"
+																					? "#00ff00"
+																					: (
+																							selectedArtist as any
+																					  )
+																							.costumeColor ===
+																					  "black"
+																					? "#000000"
+																					: (
+																							selectedArtist as any
+																					  )
+																							.costumeColor ===
+																					  "white"
+																					? "#ffffff"
+																					: "#888888",
+																		}}
+																	></div>
+																	<p className="font-medium capitalize">
+																		{
+																			(
+																				selectedArtist as any
+																			)
+																				.costumeColor
+																		}
+																	</p>
+																</div>
+																{(
+																	selectedArtist as any
+																)
+																	.customCostumeColor && (
+																	<p className="text-sm text-muted-foreground mt-1">
+																		Custom:{" "}
+																		{
+																			(
+																				selectedArtist as any
+																			)
+																				.customCostumeColor
+																		}
+																	</p>
+																)}
+															</div>
+														)}
+														{((
+															selectedArtist as any
+														).lightColorSingle ||
+															(
+																selectedArtist as any
+															).lightColorTwo ||
+															(
+																selectedArtist as any
+															)
+																.lightColorThree) && (
+															<div>
+																<p className="text-sm text-muted-foreground mb-2">
+																	Lighting
+																	Colors
+																</p>
+																<div className="space-y-2">
+																	{(
+																		selectedArtist as any
+																	)
+																		.lightColorSingle && (
+																		<div className="flex items-center gap-2">
+																			<div className="w-4 h-4 rounded border border-muted-foreground/20 bg-blue-500"></div>
+																			<span className="text-sm">
+																				Primary:{" "}
+																				{
+																					(
+																						selectedArtist as any
+																					)
+																						.lightColorSingle
+																				}
+																			</span>
+																		</div>
+																	)}
+																	{(
+																		selectedArtist as any
+																	)
+																		.lightColorTwo &&
+																		(
+																			selectedArtist as any
+																		)
+																			.lightColorTwo !==
+																			"none" && (
+																			<div className="flex items-center gap-2">
+																				<div className="w-4 h-4 rounded border border-muted-foreground/20 bg-green-500"></div>
+																				<span className="text-sm">
+																					Secondary:{" "}
+																					{
+																						(
+																							selectedArtist as any
+																						)
+																							.lightColorTwo
+																					}
+																				</span>
+																			</div>
+																		)}
+																	{(
+																		selectedArtist as any
+																	)
+																		.lightColorThree &&
+																		(
+																			selectedArtist as any
+																		)
+																			.lightColorThree !==
+																			"none" && (
+																			<div className="flex items-center gap-2">
+																				<div className="w-4 h-4 rounded border border-muted-foreground/20 bg-red-500"></div>
+																				<span className="text-sm">
+																					Third:{" "}
+																					{
+																						(
+																							selectedArtist as any
+																						)
+																							.lightColorThree
+																					}
+																				</span>
+																			</div>
+																		)}
+																</div>
+															</div>
+														)}
+														{(selectedArtist as any)
+															.lightRequests && (
+															<div>
+																<p className="text-sm text-muted-foreground">
+																	Special
+																	Lighting
+																	Requests
+																</p>
+																<p className="text-sm">
+																	{
+																		(
+																			selectedArtist as any
+																		)
+																			.lightRequests
+																	}
+																</p>
+															</div>
+														)}
+													</CardContent>
+												</Card>
+
+												{/* Stage Positioning */}
+												<Card>
+													<CardHeader>
+														<CardTitle className="flex items-center gap-2">
+															<Navigation className="h-5 w-5" />
+															Stage Positioning
+														</CardTitle>
+													</CardHeader>
+													<CardContent className="space-y-4">
+														{(selectedArtist as any)
+															.stagePositionStart && (
+															<div>
+																<p className="text-sm text-muted-foreground">
+																	Starting
+																	Position
+																</p>
+																<p className="font-medium capitalize">
+																	{(
+																		selectedArtist as any
+																	).stagePositionStart.replace(
+																		"-",
+																		" "
+																	)}
+																</p>
+															</div>
+														)}
+														{(selectedArtist as any)
+															.stagePositionEnd && (
+															<div>
+																<p className="text-sm text-muted-foreground">
+																	Ending
+																	Position
+																</p>
+																<p className="font-medium capitalize">
+																	{(
+																		selectedArtist as any
+																	).stagePositionEnd.replace(
+																		"-",
+																		" "
+																	)}
+																</p>
+															</div>
+														)}
+														{(selectedArtist as any)
+															.customStagePosition && (
+															<div>
+																<p className="text-sm text-muted-foreground">
+																	Custom
+																	Position
+																	Details
+																</p>
+																<p className="text-sm">
+																	{
+																		(
+																			selectedArtist as any
+																		)
+																			.customStagePosition
+																	}
+																</p>
+															</div>
+														)}
+														{(selectedArtist as any)
+															.equipment && (
+															<div>
+																<p className="text-sm text-muted-foreground">
+																	Props and
+																	Equipment
+																</p>
+																<p className="text-sm">
+																	{
+																		(
+																			selectedArtist as any
+																		)
+																			.equipment
+																	}
+																</p>
+															</div>
+														)}
+													</CardContent>
+												</Card>
+											</div>
+
+											{/* Notes */}
+											<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+												<Card>
+													<CardHeader>
+														<CardTitle>
+															MC Notes
 														</CardTitle>
 													</CardHeader>
 													<CardContent>
+														<p className="text-sm">
+															{(
+																selectedArtist as any
+															).mcNotes ||
+																"No special notes for MC"}
+														</p>
+													</CardContent>
+												</Card>
+												<Card>
+													<CardHeader>
+														<CardTitle>
+															Stage Manager Notes
+														</CardTitle>
+													</CardHeader>
+													<CardContent>
+														<p className="text-sm">
+															{(
+																selectedArtist as any
+															)
+																.stageManagerNotes ||
+																"No special notes for stage manager"}
+														</p>
+													</CardContent>
+												</Card>
+											</div>
+										</TabsContent>
+
+										{/* Gallery Tab */}
+										<TabsContent
+											value="gallery"
+											className="space-y-6"
+										>
+											<Card>
+												<CardHeader>
+													<CardTitle className="flex items-center gap-2">
+														<Image className="h-5 w-5" />
+														Media Gallery
+													</CardTitle>
+													<CardDescription>
+														Uploaded images and
+														videos
+													</CardDescription>
+												</CardHeader>
+												<CardContent>
+													{(selectedArtist as any)
+														.galleryFiles &&
+													(selectedArtist as any)
+														.galleryFiles.length >
+														0 ? (
 														<div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
 															{(
 																selectedArtist as any
@@ -1423,32 +1871,149 @@ Please use these credentials to access your artist dashboard.`;
 																		key={
 																			index
 																		}
-																		className="aspect-square"
+																		className="relative group"
 																	>
 																		{file.type ===
-																		"video" ? (
-																			<VideoPlayer
-																				file={
-																					file
-																				}
-																				className="w-full h-full"
-																			/>
-																		) : (
+																		"image" ? (
 																			<ImageViewer
 																				file={
 																					file
 																				}
-																				className="w-full h-full"
+																				onError={(
+																					error
+																				) => {
+																					console.error(
+																						"Image viewer error:",
+																						error
+																					);
+																				}}
+																				className="aspect-square"
+																			/>
+																		) : (
+																			<VideoPlayer
+																				file={
+																					file
+																				}
+																				onError={(
+																					error
+																				) => {
+																					console.error(
+																						"Video player error:",
+																						error
+																					);
+																				}}
+																				className="aspect-square"
 																			/>
 																		)}
+																		<div className="flex items-center justify-between mt-1">
+																			<p className="text-xs text-muted-foreground truncate flex-1">
+																				{
+																					file.name
+																				}
+																			</p>
+																			<Button
+																				variant="ghost"
+																				size="sm"
+																				onClick={async () => {
+																					const {
+																						downloadFile,
+																					} =
+																						await import(
+																							"@/lib/media-utils"
+																						);
+																					await downloadFile(
+																						file.url,
+																						file.name
+																					);
+																				}}
+																				className="h-6 w-6 p-0 ml-1"
+																				title="Download file"
+																			>
+																				<Download className="h-3 w-3" />
+																			</Button>
+																		</div>
 																	</div>
 																)
 															)}
 														</div>
-													</CardContent>
-												</Card>
-											)}
-									</div>
+													) : (
+														<p className="text-center text-muted-foreground py-8">
+															No media files
+															uploaded yet
+														</p>
+													)}
+												</CardContent>
+											</Card>
+										</TabsContent>
+
+										{/* Event Details Tab */}
+										<TabsContent
+											value="event"
+											className="space-y-6"
+										>
+											<Card>
+												<CardHeader>
+													<CardTitle className="flex items-center gap-2">
+														<Calendar className="h-5 w-5" />
+														Event Information
+													</CardTitle>
+												</CardHeader>
+												<CardContent className="space-y-4">
+													<div>
+														<p className="text-sm text-muted-foreground">
+															Event Name
+														</p>
+														<p className="font-medium text-lg">
+															{event?.name}
+														</p>
+													</div>
+													<div>
+														<p className="text-sm text-muted-foreground">
+															Registration Status
+														</p>
+														<ArtistStatusBadge
+															status={
+																selectedArtist.status
+															}
+															className="mt-1"
+														/>
+													</div>
+													{selectedArtist.performance_date && (
+														<div>
+															<p className="text-sm text-muted-foreground">
+																Assigned
+																Performance Date
+															</p>
+															<p className="font-medium">
+																{formatDateSimple(
+																	selectedArtist.performance_date
+																)}
+															</p>
+														</div>
+													)}
+													<div>
+														<p className="text-sm text-muted-foreground">
+															Registration Date
+														</p>
+														<p className="font-medium">
+															{new Date(
+																selectedArtist.created_at
+															).toLocaleDateString(
+																"en-US",
+																{
+																	year: "numeric",
+																	month: "long",
+																	day: "numeric",
+																	hour: "2-digit",
+																	minute: "2-digit",
+																}
+															)}
+														</p>
+													</div>
+												</CardContent>
+											</Card>
+										</TabsContent>
+									</Tabs>
 								)}
 
 								<DialogFooter>

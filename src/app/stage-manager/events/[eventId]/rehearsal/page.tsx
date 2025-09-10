@@ -29,6 +29,13 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { formatDateForDropdown, formatDateSimple } from "@/lib/date-utils";
+import {
+	getStatusColorClasses,
+	getStatusLabel,
+	getStatusBadgeVariant,
+} from "@/lib/status-utils";
+import { formatDuration, getDisplayDuration } from "@/lib/timing-utils";
+import { createWebSocketManager } from "@/lib/websocket-manager";
 
 interface Event {
 	id: string;
@@ -69,16 +76,77 @@ export default function RehearsalSchedule() {
 		if (eventId) {
 			fetchEvent();
 			fetchArtists();
-			// Initialize WebSocket connection for real-time updates
-			const cleanup = initializeWebSocket();
-
-			// Cleanup function
-			return () => {
-				if (cleanup) {
-					cleanup();
-				}
-			};
 		}
+
+		// Listen for WebSocket toast events
+		const handleWebSocketToast = (event: CustomEvent) => {
+			const { title, description, variant } = event.detail;
+			toast({ title, description, variant });
+		};
+
+		window.addEventListener(
+			"websocket-toast",
+			handleWebSocketToast as EventListener
+		);
+
+		return () => {
+			window.removeEventListener(
+				"websocket-toast",
+				handleWebSocketToast as EventListener
+			);
+		};
+	}, [eventId, toast]);
+
+	// Initialize WebSocket manager for real-time updates
+	useEffect(() => {
+		let wsManager: any = null;
+
+		const initializeWebSocketManager = async () => {
+			try {
+				wsManager = createWebSocketManager({
+					eventId,
+					role: "rehearsal",
+					userId: `rehearsal_${eventId}`,
+					showToasts: true,
+					onConnect: () => {
+						console.log("Rehearsal WebSocket connected");
+						setWsConnected(true);
+						setWsInitialized(true);
+					},
+					onDisconnect: () => {
+						console.log("Rehearsal WebSocket disconnected");
+						setWsConnected(false);
+					},
+					onDataUpdate: () => {
+						console.log("Rehearsal data update triggered");
+						fetchArtists();
+					},
+				});
+
+				await wsManager.initialize();
+
+				// Store reference for cleanup
+				(window as any).rehearsalWsManager = wsManager;
+			} catch (error) {
+				console.error(
+					"Error initializing Rehearsal WebSocket manager:",
+					error
+				);
+				setWsConnected(false);
+			}
+		};
+
+		if (eventId) {
+			initializeWebSocketManager();
+		}
+
+		// Cleanup on unmount
+		return () => {
+			if ((window as any).rehearsalWsManager) {
+				(window as any).rehearsalWsManager.destroy();
+				delete (window as any).rehearsalWsManager;
+			}
+		};
 	}, [eventId]);
 
 	// Debug effect to log artists state changes
@@ -273,7 +341,7 @@ export default function RehearsalSchedule() {
 		fetchArtists(true);
 	};
 
-	const initializeWebSocket = () => {
+	const initializeWebSocket = async () => {
 		// Prevent multiple initializations
 		if (wsInitialized) {
 			console.log("WebSocket already initialized, skipping...");
@@ -282,140 +350,48 @@ export default function RehearsalSchedule() {
 
 		setWsInitialized(true);
 
-		// Initialize WebSocket connection for real-time artist assignment updates
 		try {
-			// Use Socket.IO client instead of raw WebSocket
-			const script = document.createElement("script");
-			script.src = "/socket.io/socket.io.js";
-			let socket: any = null;
+			// Import and initialize WebSocket manager
+			const { createWebSocketManager } = await import(
+				"@/lib/websocket-manager"
+			);
 
-			script.onload = () => {
-				// @ts-ignore
-				socket = io();
-
-				socket.on("connect", () => {
-					console.log("Socket.IO connected for rehearsal page");
+			const wsManager = createWebSocketManager({
+				eventId,
+				role: "stage_manager",
+				userId: `stage_manager_rehearsal_${eventId}`,
+				showToasts: true,
+				onConnect: () => {
+					console.log("Rehearsal WebSocket connected");
 					setWsConnected(true);
-				});
-
-				socket.on("disconnect", () => {
-					console.log("Socket.IO disconnected");
+				},
+				onDisconnect: () => {
+					console.log("Rehearsal WebSocket disconnected");
 					setWsConnected(false);
-				});
+				},
+				onDataUpdate: () => {
+					console.log("Rehearsal data update triggered");
+					fetchArtists();
+				},
+			});
 
-				socket.on("artist_assigned", (message: any) => {
-					console.log("Artist assigned:", message);
+			await wsManager.initialize();
 
-					// Add newly assigned artist to rehearsal list
-					const assignedArtist = {
-						id: message.data.id,
-						artist_name:
-							message.data.artistName || message.data.artist_name,
-						style: message.data.style,
-						performance_duration:
-							message.data.performanceDuration ||
-							message.data.performance_duration ||
-							5,
-						actual_duration:
-							message.data.musicTracks?.find(
-								(track: any) => track.is_main_track
-							)?.duration || null,
-						quality_rating: message.data.quality_rating || null,
-						rehearsal_date: message.data.rehearsal_date || null,
-						rehearsal_order: message.data.rehearsal_order || null,
-						is_confirmed: message.data.is_confirmed || false,
-						performance_date:
-							message.data.performanceDate ||
-							message.data.performance_date,
-						rehearsal_completed:
-							message.data.rehearsal_completed || false,
-					};
-
-					setArtists((prev) => {
-						// Check if artist already exists
-						const existingIndex = prev.findIndex(
-							(a) => a.id === assignedArtist.id
-						);
-						if (existingIndex >= 0) {
-							// Update existing artist
-							const updated = [...prev];
-							updated[existingIndex] = assignedArtist;
-							return updated;
-						} else {
-							// Add new artist
-							return [assignedArtist, ...prev];
-						}
-					});
-
-					toast({
-						title: "Artist Assigned",
-						description: `${assignedArtist.artist_name} is now available for rehearsal scheduling`,
-					});
-				});
-
-				socket.on("artist_unassigned", (message: any) => {
-					console.log("Artist unassigned:", message);
-
-					// Remove unassigned artist from rehearsal list
-					setArtists((prev) =>
-						prev.filter((artist) => artist.id !== message.data.id)
-					);
-
-					toast({
-						title: "Artist Unassigned",
-						description: `${
-							message.data.artist_name || message.data.artistName
-						} has been removed from rehearsal schedule`,
-						variant: "destructive",
-					});
-				});
-
-				socket.on("rehearsal_updated", (message: any) => {
-					console.log("Rehearsal updated:", message);
-
-					// Update rehearsal information
-					setArtists((prev) =>
-						prev.map((artist) =>
-							artist.id === message.data.id
-								? {
-										...artist,
-										rehearsal_date:
-											message.data.rehearsal_date,
-										rehearsal_order:
-											message.data.rehearsal_order,
-										rehearsal_completed:
-											message.data.rehearsal_completed,
-										quality_rating:
-											message.data.quality_rating,
-								  }
-								: artist
-						)
-					);
-
-					toast({
-						title: "Rehearsal Updated",
-						description: `${
-							message.data.artist_name || message.data.artistName
-						} rehearsal information updated`,
-					});
-				});
-			};
-			document.head.appendChild(script);
+			// Store reference for cleanup and emitting events
+			(window as any).rehearsalWsManager = wsManager;
 
 			// Return cleanup function
 			return () => {
-				if (socket) {
-					socket.disconnect();
-				}
-				if (script.parentNode) {
-					script.parentNode.removeChild(script);
+				if ((window as any).rehearsalWsManager) {
+					(window as any).rehearsalWsManager.destroy();
+					delete (window as any).rehearsalWsManager;
 				}
 				setWsInitialized(false);
 			};
 		} catch (error) {
 			console.error("Failed to initialize WebSocket:", error);
 			setWsInitialized(false);
-			return () => {}; // Return empty cleanup function on error
+			throw error;
 		}
 	};
 
@@ -452,6 +428,19 @@ export default function RehearsalSchedule() {
 					title: "Quality rating updated",
 					description: "Artist quality rating has been saved to GCS",
 				});
+
+				// Emit WebSocket event for real-time updates
+				const wsManager = (window as any).rehearsalWsManager;
+				if (wsManager) {
+					wsManager.emit("artist_quality_rating_updated", {
+						eventId,
+						artistId: artistId,
+						artist_name: artists.find((a) => a.id === artistId)
+							?.artist_name,
+						quality_rating: rating,
+						timestamp: new Date().toISOString(),
+					});
+				}
 
 				// Refresh data from GCS to ensure consistency
 				setTimeout(() => {
@@ -601,6 +590,17 @@ export default function RehearsalSchedule() {
 						: "Artist removed from performance order queue and saved to GCS",
 				});
 
+				// Emit WebSocket event for real-time updates
+				const wsManager = (window as any).rehearsalWsManager;
+				if (wsManager) {
+					wsManager.emit("rehearsal_updated", {
+						eventId,
+						artistId,
+						action: newStatus ? "completed" : "uncompleted",
+						rehearsal_completed: newStatus,
+					});
+				}
+
 				// Refresh data from GCS to ensure consistency
 				setTimeout(() => {
 					fetchArtists();
@@ -684,6 +684,18 @@ export default function RehearsalSchedule() {
 					title: "Rehearsal scheduled",
 					description: "Rehearsal date and order saved to GCS",
 				});
+
+				// Emit WebSocket event for real-time updates
+				const wsManager = (window as any).rehearsalWsManager;
+				if (wsManager) {
+					wsManager.emit("rehearsal_updated", {
+						eventId,
+						artistId,
+						action: "scheduled",
+						rehearsal_date: date,
+						rehearsal_order: order,
+					});
+				}
 
 				// Refresh data from GCS to ensure consistency
 				setTimeout(() => {
@@ -839,6 +851,18 @@ export default function RehearsalSchedule() {
 					description:
 						"Artist removed from rehearsal schedule and saved to GCS",
 				});
+
+				// Emit WebSocket event for real-time updates
+				const wsManager = (window as any).rehearsalWsManager;
+				if (wsManager) {
+					wsManager.emit("rehearsal_updated", {
+						eventId,
+						artistId,
+						action: "removed",
+						rehearsal_date: null,
+						rehearsal_order: null,
+					});
+				}
 
 				// Refresh data from GCS to ensure consistency
 				setTimeout(() => {

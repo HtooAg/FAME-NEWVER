@@ -31,6 +31,7 @@ import {
 	Palette,
 	Navigation,
 	ArrowLeft,
+	LogOut,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { AudioPlayer } from "@/components/ui/audio-player";
@@ -261,6 +262,19 @@ export default function ArtistDashboard() {
 							>
 								<Edit className="h-4 w-4 mr-2" />
 								Edit Profile
+							</Button>
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={() => {
+									// Clear artist session
+									localStorage.removeItem("artistSession");
+									// Redirect to artist login page
+									router.push("/artist-login");
+								}}
+							>
+								<LogOut className="h-4 w-4 mr-2" />
+								Logout
 							</Button>
 						</div>
 					</div>

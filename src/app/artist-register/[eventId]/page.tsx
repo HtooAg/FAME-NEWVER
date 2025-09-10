@@ -1367,14 +1367,23 @@ function ArtistRegistrationForm() {
 														<SelectItem value="silver">
 															Silver
 														</SelectItem>
-														<SelectItem value="multicolor">
-															Multicolor
-														</SelectItem>
-														<SelectItem value="custom">
-															Custom Color
-														</SelectItem>
 													</SelectContent>
 												</Select>
+												{artistData.costume_color &&
+													artistData.costume_color !==
+														"custom" &&
+													artistData.costume_color !==
+														"multicolor" && (
+														<div
+															className="w-full h-8 rounded border-2 border-muted-foreground/20"
+															style={{
+																background:
+																	getColorStyle(
+																		artistData.costume_color
+																	),
+															}}
+														></div>
+													)}
 												{artistData.costume_color ===
 													"custom" && (
 													<div className="space-y-2">
@@ -1784,6 +1793,9 @@ function ArtistRegistrationForm() {
 															<SelectValue placeholder="Select starting position" />
 														</SelectTrigger>
 														<SelectContent>
+															<SelectItem value="off-stage">
+																OFF stage
+															</SelectItem>
 															<SelectItem value="upstage-left">
 																Upstage Left
 															</SelectItem>
@@ -1810,9 +1822,6 @@ function ArtistRegistrationForm() {
 															</SelectItem>
 															<SelectItem value="downstage-right">
 																Downstage Right
-															</SelectItem>
-															<SelectItem value="custom">
-																Custom Position
 															</SelectItem>
 														</SelectContent>
 													</Select>
@@ -1838,6 +1847,9 @@ function ArtistRegistrationForm() {
 															<SelectValue placeholder="Select ending position" />
 														</SelectTrigger>
 														<SelectContent>
+															<SelectItem value="off-stage">
+																OFF stage
+															</SelectItem>
 															<SelectItem value="upstage-left">
 																Upstage Left
 															</SelectItem>
@@ -1864,9 +1876,6 @@ function ArtistRegistrationForm() {
 															</SelectItem>
 															<SelectItem value="downstage-right">
 																Downstage Right
-															</SelectItem>
-															<SelectItem value="custom">
-																Custom Position
 															</SelectItem>
 														</SelectContent>
 													</Select>
@@ -2308,37 +2317,73 @@ function ArtistRegistrationForm() {
 									</span>
 								</div>
 							)}
+							<div className="text-sm text-gray-600 bg-blue-50 border border-blue-200 rounded-lg p-3 text-center">
+								<p className="font-medium text-blue-800 mb-1">
+									Important Note:
+								</p>
+								<p className="text-blue-700">
+									Please save your Artist ID, Name, and Email.
+									You'll need these to log in to your artist
+									dashboard.
+								</p>
+							</div>
 						</div>
 
-						<Button
-							onClick={() => {
-								// Use the stored artist ID first, then fallback to URL params
-								const artistId =
-									registeredArtistId ||
-									new URLSearchParams(
-										window.location.search
-									).get("artistId");
-								console.log(
-									"Redirecting to dashboard with artistId:",
-									artistId
-								);
-
-								if (artistId) {
+						<div className="space-y-3">
+							<Button
+								onClick={async () => {
+									// Copy artist ID to clipboard
+									const artistId =
+										registeredArtistId ||
+										new URLSearchParams(
+											window.location.search
+										).get("artistId");
+									if (artistId) {
+										try {
+											await navigator.clipboard.writeText(
+												artistId
+											);
+											toast({
+												title: "Artist ID Copied!",
+												description:
+													"Artist ID has been copied to clipboard",
+											});
+										} catch (error) {
+											console.error(
+												"Failed to copy artist ID:",
+												error
+											);
+										}
+									}
+								}}
+								variant="outline"
+								className="w-full"
+							>
+								Copy Artist ID
+							</Button>
+							<Button
+								onClick={() => {
+									// Redirect to artist login page with pre-filled data
+									const artistId =
+										registeredArtistId ||
+										new URLSearchParams(
+											window.location.search
+										).get("artistId");
+									const params = new URLSearchParams({
+										artistId: artistId || "",
+										artistName: artistData.artist_name,
+										email: artistData.email,
+									});
 									router.push(
-										`/artist-dashboard/${artistId}`
+										`/artist-login?${params.toString()}`
 									);
-								} else {
-									console.error(
-										"No artist ID found for redirect"
-									);
-									router.push("/artist-dashboard");
-								}
-							}}
-							className="w-full py-3 text-lg font-semibold text-white bg-purple-600 hover:bg-purple-700 border-0"
-							size="lg"
-						>
-							Go to Dashboard
-						</Button>
+								}}
+								className="w-full py-3 text-lg font-semibold text-white bg-purple-600 hover:bg-purple-700 border-0"
+								size="lg"
+							>
+								Go to Login
+							</Button>
+						</div>
 					</div>
 				</DialogContent>
 			</Dialog>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,17 +11,15 @@ import {
 	CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
-	Dialog,
-	DialogContent,
-	DialogDescription,
-	DialogHeader,
-	DialogTitle,
-	DialogTrigger,
-} from "@/components/ui/dialog";
+	Accordion,
+	AccordionContent,
+	AccordionItem,
+	AccordionTrigger,
+} from "@/components/ui/accordion";
 import {
 	Select,
 	SelectContent,
@@ -31,18 +29,12 @@ import {
 } from "@/components/ui/select";
 import {
 	Music,
-	Play,
-	Pause,
 	Clock,
 	ArrowLeft,
 	Upload,
-	Edit3,
-	Users,
 	Calendar,
 	Star,
 	CheckCircle,
-	Headphones,
-	Edit,
 	Timer,
 	Mic,
 	Video,
@@ -51,9 +43,24 @@ import {
 	Sparkles,
 	AlertTriangle,
 	RefreshCw,
+	Download,
+	FileMusic,
+	Volume2,
+	Save,
+	ChevronDown,
+	ChevronRight,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { formatDateSimple, formatDateForDropdown } from "@/lib/date-utils";
+import {
+	getStatusColorClasses,
+	getStatusLabel,
+	getStatusBadgeVariant,
+} from "@/lib/status-utils";
+import { formatDuration, getDisplayDuration } from "@/lib/timing-utils";
+import { createWebSocketManager } from "@/lib/websocket-manager";
+import { AudioPlayer } from "@/components/ui/audio-player";
+import { downloadFile, detectAudioDuration } from "@/lib/media-utils";
 
 interface Artist {
 	id: string;
@@ -112,15 +119,17 @@ interface EmergencyBroadcast {
 }
 
 interface MusicTrack {
-	id: string;
-	artist_id: string;
+	id?: string;
+	artist_id?: string;
+	artist_name?: string;
 	song_title: string;
 	duration: number;
-	file_url: string | null;
+	file_url: string;
+	file_path?: string;
 	is_main_track: boolean;
-	tempo: string | null;
-	notes: string | null;
-	dj_notes?: string | null;
+	tempo: string;
+	notes: string;
+	dj_notes?: string;
 }
 
 interface Event {
@@ -135,13 +144,10 @@ export default function DJDashboard() {
 	const router = useRouter();
 	const { toast } = useToast();
 	const eventId = params.eventId as string;
-	const wsRef = useRef<WebSocket | null>(null);
 
 	const [event, setEvent] = useState<Event | null>(null);
 	const [showOrderItems, setShowOrderItems] = useState<ShowOrderItem[]>([]);
 	const [musicTracks, setMusicTracks] = useState<MusicTrack[]>([]);
-	const [currentTrack, setCurrentTrack] = useState<string | null>(null);
-	const [isPlaying, setIsPlaying] = useState(false);
 	const [loading, setLoading] = useState(true);
 	const [selectedPerformanceDate, setSelectedPerformanceDate] =
 		useState<string>("");
@@ -150,129 +156,15 @@ export default function DJDashboard() {
 		EmergencyBroadcast[]
 	>([]);
 	const [wsConnected, setWsConnected] = useState(false);
-
-	// Initialize Socket.IO connection for emergency alerts
-	useEffect(() => {
-		const connectSocket = () => {
-			try {
-				// Load Socket.IO client and connect
-				const script = document.createElement("script");
-				script.src = "/socket.io/socket.io.js";
-				script.onload = () => {
-					// @ts-ignore - Socket.IO is loaded dynamically
-					const socket = io();
-
-					socket.on("connect", () => {
-						console.log("DJ Dashboard Socket.IO connected");
-						setWsConnected(true);
-
-						// Authenticate as DJ for this event
-						socket.emit("authenticate", {
-							userId: `dj_${eventId}`,
-							role: "dj",
-							eventId: eventId,
-						});
-					});
-
-					socket.on("disconnect", () => {
-						console.log("DJ Dashboard Socket.IO disconnected");
-						setWsConnected(false);
-					});
-
-					// Listen for emergency alerts
-					socket.on("emergency-alert", (data: any) => {
-						console.log("Emergency alert:", data);
-						fetchEmergencyBroadcasts();
-						toast({
-							title: `${data.emergency_code.toUpperCase()} EMERGENCY ALERT`,
-							description: data.message,
-							variant: "destructive",
-						});
-					});
-
-					socket.on("emergency-clear", (data: any) => {
-						console.log("Emergency cleared:", data);
-						fetchEmergencyBroadcasts();
-						toast({
-							title: "Emergency alert cleared",
-							description:
-								"Emergency broadcast has been deactivated",
-						});
-					});
-
-					// Listen for performance status updates
-					socket.on("artist_status_changed", (data: any) => {
-						console.log("Artist status changed:", data);
-						if (data.eventId === eventId) {
-							// Update local state with real-time status change
-							setShowOrderItems((prev) =>
-								prev.map((item) =>
-									item.id === data.id &&
-									item.type === "artist"
-										? {
-												...item,
-												status:
-													data.performance_status ||
-													item.status,
-										  }
-										: item
-								)
-							);
-						}
-					});
-
-					// Listen for performance order updates
-					socket.on("performance-order-update", (data: any) => {
-						console.log("Performance order update:", data);
-						if (data.eventId === eventId) {
-							fetchPerformanceOrder(); // Refresh data when performance order changes
-						}
-					});
-
-					// Listen for artist assignments and other changes
-					socket.on("artist_assigned", (data: any) => {
-						console.log("Artist assigned:", data);
-						if (data.eventId === eventId) {
-							fetchPerformanceOrder(); // Refresh data when artists are assigned
-						}
-					});
-
-					socket.on("artist_deleted", (data: any) => {
-						console.log("Artist deleted:", data);
-						if (data.eventId === eventId) {
-							fetchPerformanceOrder(); // Refresh data when artists are deleted
-						}
-					});
-
-					socket.on("connect_error", (error: any) => {
-						console.error("Socket.IO connection error:", error);
-						setWsConnected(false);
-					});
-
-					// Store socket reference for cleanup
-					wsRef.current = socket as any;
-				};
-
-				script.onerror = () => {
-					console.error("Failed to load Socket.IO client");
-					setWsConnected(false);
-				};
-
-				document.head.appendChild(script);
-			} catch (error) {
-				console.warn("DJ Dashboard Socket.IO setup failed:", error);
-				setWsConnected(false);
-			}
-		};
-
-		connectSocket();
-
-		return () => {
-			if (wsRef.current) {
-				(wsRef.current as any).disconnect();
-			}
-		};
-	}, [eventId]);
+	const [downloadingAll, setDownloadingAll] = useState(false);
+	const [expandedArtists, setExpandedArtists] = useState<string[]>([]);
+	const [djNotesState, setDjNotesState] = useState<{ [key: string]: string }>(
+		{}
+	);
+	const [uploadingTracks, setUploadingTracks] = useState<{
+		[key: string]: boolean;
+	}>({});
+	const [lastUpdateTime, setLastUpdateTime] = useState<string>("");
 
 	useEffect(() => {
 		if (eventId) {
@@ -280,13 +172,83 @@ export default function DJDashboard() {
 			fetchEventDates();
 			fetchEmergencyBroadcasts();
 		}
-	}, [eventId]);
+
+		// Listen for WebSocket toast events
+		const handleWebSocketToast = (event: CustomEvent) => {
+			const { title, description, variant } = event.detail;
+			toast({ title, description, variant });
+		};
+
+		window.addEventListener(
+			"websocket-toast",
+			handleWebSocketToast as EventListener
+		);
+
+		return () => {
+			window.removeEventListener(
+				"websocket-toast",
+				handleWebSocketToast as EventListener
+			);
+		};
+	}, [eventId, toast]);
 
 	useEffect(() => {
 		if (selectedPerformanceDate) {
 			fetchPerformanceOrder();
 		}
 	}, [selectedPerformanceDate]);
+
+	// Initialize WebSocket manager for real-time updates
+	useEffect(() => {
+		let wsManager: any = null;
+
+		const initializeWebSocketManager = async () => {
+			try {
+				wsManager = createWebSocketManager({
+					eventId,
+					role: "dj",
+					userId: `dj_${eventId}`,
+					showToasts: true,
+					onConnect: () => {
+						console.log("DJ WebSocket connected");
+						setWsConnected(true);
+					},
+					onDisconnect: () => {
+						console.log("DJ WebSocket disconnected");
+						setWsConnected(false);
+					},
+					onDataUpdate: () => {
+						console.log("DJ data update triggered");
+						fetchPerformanceOrder();
+						fetchEmergencyBroadcasts();
+					},
+				});
+
+				await wsManager.initialize();
+
+				// Store reference for cleanup
+				(window as any).djWsManager = wsManager;
+			} catch (error) {
+				console.error(
+					"Error initializing DJ WebSocket manager:",
+					error
+				);
+				setWsConnected(false);
+			}
+		};
+
+		if (eventId && selectedPerformanceDate) {
+			initializeWebSocketManager();
+		}
+
+		// Cleanup on unmount
+		return () => {
+			if ((window as any).djWsManager) {
+				(window as any).djWsManager.destroy();
+				delete (window as any).djWsManager;
+			}
+		};
+	}, [eventId, selectedPerformanceDate]);
 
 	const fetchEventData = async () => {
 		try {
@@ -314,20 +276,11 @@ export default function DJDashboard() {
 				const evt = data.data || data.event || data;
 				const showDates = evt.show_dates || evt.showDates || [];
 
-				console.log("=== DJ EVENT DATE DEBUG ===");
-				console.log("Raw event show dates:", showDates);
-
 				if (showDates.length > 0) {
-					// Use dates directly like rehearsal page - no normalization needed
-					console.log("Using event dates directly:", showDates);
 					setEventDates(showDates);
 
 					if (!selectedPerformanceDate && showDates.length > 0) {
 						setSelectedPerformanceDate(showDates[0]);
-						console.log(
-							"Set default performance date:",
-							showDates[0]
-						);
 					}
 				}
 			}
@@ -336,13 +289,13 @@ export default function DJDashboard() {
 		}
 	};
 
-	const fetchPerformanceOrder = async () => {
+	const fetchPerformanceOrder = useCallback(async () => {
 		if (!selectedPerformanceDate) return;
 
 		try {
 			setLoading(true);
 
-			// Fetch artists from GCS (same as performance order page)
+			// Fetch artists from GCS
 			const response = await fetch(`/api/events/${eventId}/artists`);
 			if (response.ok) {
 				const data = await response.json();
@@ -371,34 +324,24 @@ export default function DJDashboard() {
 
 					// Filter artists for the selected performance date
 					const filteredArtists = artists.filter((a: Artist) => {
-						// Check both performance_date and performanceDate fields for compatibility
 						const performanceDate =
 							a.performance_date || (a as any).performanceDate;
 
 						if (!performanceDate) {
-							console.log(
-								`Artist ${a.artist_name} has no performance date, skipping`
-							);
-							return false; // Only show artists with performance dates
+							return false;
 						}
 
-						// Normalize both dates to YYYY-MM-DD format for comparison
 						let artistDate: string;
 						try {
-							// Handle different date formats
 							if (typeof performanceDate === "string") {
 								if (performanceDate.includes("T")) {
-									// ISO format: 2025-09-16T00:00:00.000Z
-									// Extract date part only
 									artistDate = performanceDate.split("T")[0];
 								} else if (
 									performanceDate.includes("-") &&
 									performanceDate.length === 10
 								) {
-									// Already in YYYY-MM-DD format
 									artistDate = performanceDate;
 								} else {
-									// Try to parse as date and format as YYYY-MM-DD
 									const parsedDate = new Date(
 										performanceDate
 									);
@@ -412,7 +355,6 @@ export default function DJDashboard() {
 									artistDate = `${year}-${month}-${day}`;
 								}
 							} else {
-								// Handle Date object
 								const dateObj = new Date(performanceDate);
 								const year = dateObj.getFullYear();
 								const month = String(
@@ -433,16 +375,12 @@ export default function DJDashboard() {
 							return false;
 						}
 
-						// Normalize selectedPerformanceDate for comparison
 						let normalizedSelectedDate = selectedPerformanceDate;
 						if (selectedPerformanceDate.includes("T")) {
 							normalizedSelectedDate =
 								selectedPerformanceDate.split("T")[0];
 						}
 
-						console.log(
-							`DJ Filtering artist ${a.artist_name}: artistDate=${artistDate}, selectedDate=${selectedPerformanceDate}, normalizedSelectedDate=${normalizedSelectedDate}, rawDate=${performanceDate}`
-						);
 						return artistDate === normalizedSelectedDate;
 					});
 
@@ -504,19 +442,6 @@ export default function DJDashboard() {
 					if (artistIds.length > 0) {
 						await fetchMusicTracks(artistIds);
 					}
-
-					console.log("=== DJ DASHBOARD DEBUG ===");
-					console.log(
-						`Selected performance date: ${selectedPerformanceDate}`
-					);
-					console.log(`Total artists from API: ${artists.length}`);
-					console.log(
-						`Filtered artists for date: ${filteredArtists.length}`
-					);
-					console.log(
-						`Show order items: ${allShowOrderItems.length}`
-					);
-					console.log("=== END DEBUG ===");
 				}
 			}
 		} catch (error) {
@@ -529,58 +454,283 @@ export default function DJDashboard() {
 		} finally {
 			setLoading(false);
 		}
-	};
+	}, [eventId, selectedPerformanceDate, toast]);
 
 	const fetchMusicTracks = async (artistIds: string[]) => {
 		try {
-			// This would need to be implemented in your API
-			// For now, we'll use mock data
-			const mockTracks: MusicTrack[] = [];
-			setMusicTracks(mockTracks);
+			// Fetch all artists to get their music tracks
+			const response = await fetch(`/api/events/${eventId}/artists`);
+			if (response.ok) {
+				const data = await response.json();
+				if (data.success) {
+					const allTracks: MusicTrack[] = [];
+
+					data.data.forEach((artist: any) => {
+						if (
+							artist.musicTracks &&
+							artistIds.includes(artist.id)
+						) {
+							const tracks = artist.musicTracks.map(
+								(track: any) => ({
+									...track,
+									artist_id: artist.id,
+									artist_name:
+										artist.artistName || artist.artist_name,
+								})
+							);
+							allTracks.push(...tracks);
+						}
+					});
+
+					setMusicTracks(allTracks);
+				}
+			}
 		} catch (error) {
 			console.error("Error fetching music tracks:", error);
 		}
-	};
-
-	const playTrack = (trackId: string) => {
-		setCurrentTrack(trackId);
-		setIsPlaying(true);
-		toast({
-			title: "Playing track",
-			description: "Audio playback would start here",
-		});
-	};
-
-	const pauseTrack = () => {
-		setIsPlaying(false);
-		toast({
-			title: "Track paused",
-			description: "Audio playback paused",
-		});
 	};
 
 	const getArtistTracks = (artistId: string) => {
 		return musicTracks.filter((track) => track.artist_id === artistId);
 	};
 
-	// Helper function to format duration from seconds to minutes:seconds
-	const formatDuration = (seconds: number | null) => {
-		if (!seconds) return "N/A";
-		const mins = Math.floor(seconds / 60);
-		const secs = seconds % 60;
-		return `${mins}:${secs.toString().padStart(2, "0")}`;
+	// Download all music from all performances
+	const downloadAllMusic = async () => {
+		setDownloadingAll(true);
+		try {
+			const tracksWithFiles = musicTracks.filter(
+				(track) =>
+					track.file_url &&
+					!track.song_title.toLowerCase().includes("cue") // Exclude cue tracks
+			);
+
+			if (tracksWithFiles.length === 0) {
+				toast({
+					title: "No music files",
+					description: "No music files available for download",
+					variant: "destructive",
+				});
+				return;
+			}
+
+			toast({
+				title: "Downloading music",
+				description: `Starting download of ${tracksWithFiles.length} tracks...`,
+			});
+
+			// Download each track
+			for (const track of tracksWithFiles) {
+				try {
+					const filename = `${track.artist_name || "Unknown"} - ${
+						track.song_title
+					}`;
+					await downloadFile(track.file_url, filename);
+
+					// Small delay between downloads to prevent overwhelming the browser
+					await new Promise((resolve) => setTimeout(resolve, 500));
+				} catch (error) {
+					console.error(
+						`Failed to download ${track.song_title}:`,
+						error
+					);
+				}
+			}
+
+			toast({
+				title: "Download complete",
+				description: `Downloaded ${tracksWithFiles.length} music files`,
+			});
+		} catch (error) {
+			console.error("Error downloading all music:", error);
+			toast({
+				title: "Download failed",
+				description: "Failed to download music files",
+				variant: "destructive",
+			});
+		} finally {
+			setDownloadingAll(false);
+		}
 	};
 
-	// Helper function to get display duration (prefer actual_duration over performance_duration)
-	const getDisplayDuration = (artist: Artist) => {
-		if (artist.actual_duration) {
-			return formatDuration(artist.actual_duration);
+	// Save DJ notes
+	const saveDjNotes = async (artistId: string) => {
+		try {
+			const notes = djNotesState[artistId] || "";
+
+			// Update artist with DJ notes
+			const response = await fetch(
+				`/api/events/${eventId}/artists/${artistId}`,
+				{
+					method: "PATCH",
+					headers: {
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({
+						dj_notes: notes,
+					}),
+				}
+			);
+
+			if (response.ok) {
+				toast({
+					title: "Notes saved",
+					description: "DJ notes have been saved successfully",
+				});
+
+				// Refresh data
+				fetchPerformanceOrder();
+			} else {
+				throw new Error("Failed to save notes");
+			}
+		} catch (error) {
+			console.error("Error saving DJ notes:", error);
+			toast({
+				title: "Save failed",
+				description: "Failed to save DJ notes",
+				variant: "destructive",
+			});
 		}
-		return `${artist.performance_duration} min`;
+	};
+
+	// Delete music track
+	const deleteTrack = async (artistId: string, trackIndex: number) => {
+		try {
+			// Get current artist data
+			const response = await fetch(
+				`/api/events/${eventId}/artists/${artistId}`
+			);
+			if (!response.ok) throw new Error("Failed to fetch artist");
+
+			const artistData = await response.json();
+			const updatedTracks = [...(artistData.data.musicTracks || [])];
+			updatedTracks.splice(trackIndex, 1);
+
+			// Update artist with modified tracks
+			const updateResponse = await fetch(
+				`/api/events/${eventId}/artists/${artistId}`,
+				{
+					method: "PATCH",
+					headers: {
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({
+						musicTracks: updatedTracks,
+					}),
+				}
+			);
+
+			if (updateResponse.ok) {
+				toast({
+					title: "Track deleted",
+					description: "Music track has been deleted successfully",
+				});
+
+				// Refresh data
+				fetchPerformanceOrder();
+			} else {
+				throw new Error("Failed to delete track");
+			}
+		} catch (error) {
+			console.error("Error deleting track:", error);
+			toast({
+				title: "Delete failed",
+				description: "Failed to delete music track",
+				variant: "destructive",
+			});
+		}
+	};
+
+	// Upload new music track
+	const uploadNewTrack = async (
+		artistId: string,
+		file: File,
+		title: string
+	) => {
+		try {
+			setUploadingTracks((prev) => ({ ...prev, [artistId]: true }));
+
+			const formData = new FormData();
+			formData.append("file", file);
+			formData.append("type", "music");
+
+			// Upload file
+			const uploadResponse = await fetch(
+				`/api/events/${eventId}/upload`,
+				{
+					method: "POST",
+					body: formData,
+				}
+			);
+
+			if (!uploadResponse.ok) throw new Error("Failed to upload file");
+
+			const uploadResult = await uploadResponse.json();
+
+			// Detect duration
+			const duration = await detectAudioDuration(file);
+
+			// Get current artist data
+			const artistResponse = await fetch(
+				`/api/events/${eventId}/artists/${artistId}`
+			);
+			if (!artistResponse.ok) throw new Error("Failed to fetch artist");
+
+			const artistData = await artistResponse.json();
+			const updatedTracks = [...(artistData.data.musicTracks || [])];
+
+			// Add new track
+			updatedTracks.push({
+				song_title: title,
+				duration: duration,
+				file_url: uploadResult.url,
+				file_path: uploadResult.path,
+				is_main_track: updatedTracks.length === 0,
+				tempo: "",
+				notes: "",
+			});
+
+			// Update artist with new track
+			const updateResponse = await fetch(
+				`/api/events/${eventId}/artists/${artistId}`,
+				{
+					method: "PATCH",
+					headers: {
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({
+						musicTracks: updatedTracks,
+					}),
+				}
+			);
+
+			if (updateResponse.ok) {
+				toast({
+					title: "Track uploaded",
+					description:
+						"New music track has been uploaded successfully",
+				});
+
+				// Refresh data
+				fetchPerformanceOrder();
+				return true;
+			} else {
+				throw new Error("Failed to update artist");
+			}
+		} catch (error) {
+			console.error("Error uploading track:", error);
+			toast({
+				title: "Upload failed",
+				description: "Failed to upload music track",
+				variant: "destructive",
+			});
+			return false;
+		} finally {
+			setUploadingTracks((prev) => ({ ...prev, [artistId]: false }));
+		}
 	};
 
 	// Emergency broadcast functions
-	const fetchEmergencyBroadcasts = async () => {
+	const fetchEmergencyBroadcasts = useCallback(async () => {
 		try {
 			const response = await fetch(
 				`/api/events/${eventId}/emergency-broadcasts`
@@ -594,7 +744,84 @@ export default function DJDashboard() {
 		} catch (error) {
 			console.error("Error fetching emergency broadcasts:", error);
 		}
-	};
+	}, [eventId]);
+
+	// Initialize WebSocket manager with auto-refresh
+	useEffect(() => {
+		let wsManager: any = null;
+
+		const initializeWebSocketManager = async () => {
+			try {
+				// Import and initialize WebSocket manager
+				const { createWebSocketManager } = await import(
+					"@/lib/websocket-manager"
+				);
+
+				wsManager = createWebSocketManager({
+					eventId,
+					role: "dj",
+					userId: `dj_${eventId}`,
+					showToasts: true,
+					onConnect: () => {
+						console.log(
+							"DJ WebSocket connected - Real-time mode active"
+						);
+						setWsConnected(true);
+						// Initial data fetch when connected
+						if (selectedPerformanceDate) {
+							fetchPerformanceOrder();
+						}
+						fetchEmergencyBroadcasts();
+					},
+					onDisconnect: () => {
+						console.log("DJ WebSocket disconnected");
+						setWsConnected(false);
+					},
+					onDataUpdate: () => {
+						console.log("DJ WebSocket data update received");
+						setLastUpdateTime(new Date().toLocaleTimeString());
+
+						// Use setTimeout to ensure functions are available
+						setTimeout(() => {
+							if (selectedPerformanceDate) {
+								console.log(
+									"Refreshing DJ performance order via WebSocket..."
+								);
+								fetchPerformanceOrder();
+							}
+							console.log(
+								"Refreshing DJ emergency broadcasts via WebSocket..."
+							);
+							fetchEmergencyBroadcasts();
+						}, 100);
+					},
+				});
+
+				await wsManager.initialize();
+
+				// Store reference for cleanup
+				(window as any).djWsManager = wsManager;
+			} catch (error) {
+				console.error(
+					"Error initializing DJ WebSocket manager:",
+					error
+				);
+				setWsConnected(false);
+			}
+		};
+
+		if (eventId) {
+			initializeWebSocketManager();
+		}
+
+		// Cleanup on unmount
+		return () => {
+			if ((window as any).djWsManager) {
+				(window as any).djWsManager.destroy();
+				delete (window as any).djWsManager;
+			}
+		};
+	}, [eventId, fetchPerformanceOrder, fetchEmergencyBroadcasts]);
 
 	const getEmergencyColor = (code: string) => {
 		switch (code) {
@@ -609,19 +836,9 @@ export default function DJDashboard() {
 		}
 	};
 
+	// Using imported status utilities
 	const getRowColorClasses = (status?: string | null) => {
-		switch (status) {
-			case "completed":
-				return "bg-white border-red-300 text-red-900 shadow-md border-2";
-			case "currently_on_stage":
-				return "bg-white border-green-300 text-green-900 shadow-md border-2";
-			case "next_on_stage":
-				return "bg-white border-yellow-300 text-yellow-900 shadow-md border-2";
-			case "next_on_deck":
-				return "bg-white border-blue-300 text-blue-900 shadow-md border-2";
-			default:
-				return "bg-white border-gray-300 text-gray-900 shadow-md border-2";
-		}
+		return `${getStatusColorClasses(status)} shadow-md border-2`;
 	};
 
 	const getQualityBadge = (rating: number | null) => {
@@ -653,7 +870,7 @@ export default function DJDashboard() {
 			video_break: Video,
 			cleaning_break: Trash2,
 			speech_break: Speaker,
-			opening: Play,
+			opening: Music,
 			countdown: Timer,
 			artist_ending: CheckCircle,
 			animation: Sparkles,
@@ -661,166 +878,162 @@ export default function DJDashboard() {
 		return iconMap[cueType];
 	};
 
-	const MusicEditDialog = ({
-		artistId,
-		tracks,
-	}: {
-		artistId: string;
-		tracks: MusicTrack[];
-	}) => {
-		const [newTrackTitle, setNewTrackTitle] = useState("");
-		const [selectedFile, setSelectedFile] = useState<File | null>(null);
+	// Clean Upload Component - No auto-refresh interference with WebSocket-only mode
+	const ArtistUploadSection = ({ artist }: { artist: Artist }) => {
+		const [title, setTitle] = useState("");
+		const [file, setFile] = useState<File | null>(null);
+		const [isUploading, setIsUploading] = useState(false);
+		const fileInputRef = useRef<HTMLInputElement>(null);
 
-		// return (
-		// 	<Dialog>
-		// 		<DialogTrigger asChild>
-		// 			<Button variant="outline" size="sm">
-		// 				<Edit className="h-4 w-4 mr-1" />
-		// 				Edit Music
-		// 			</Button>
-		// 		</DialogTrigger>
-		// 		<DialogContent className="max-w-2xl">
-		// 			<DialogHeader>
-		// 				<DialogTitle>Edit Music Tracks</DialogTitle>
-		// 				<DialogDescription>
-		// 					Upload new tracks or edit existing ones
-		// 				</DialogDescription>
-		// 			</DialogHeader>
-		// 			<div className="space-y-4">
-		// 				{/* Upload new track */}
-		// 				<div className="border rounded-lg p-4">
-		// 					<h4 className="font-medium mb-3">
-		// 						Upload New Track
-		// 					</h4>
-		// 					<div className="space-y-3">
-		// 						<div>
-		// 							<Label htmlFor="track-title">
-		// 								Track Title
-		// 							</Label>
-		// 							<Input
-		// 								id="track-title"
-		// 								value={newTrackTitle}
-		// 								onChange={(e) =>
-		// 									setNewTrackTitle(e.target.value)
-		// 								}
-		// 								placeholder="Enter track title"
-		// 							/>
-		// 						</div>
-		// 						<div>
-		// 							<Label htmlFor="track-file">
-		// 								Audio File
-		// 							</Label>
-		// 							<Input
-		// 								id="track-file"
-		// 								type="file"
-		// 								accept="audio/*"
-		// 								onChange={(e) =>
-		// 									setSelectedFile(
-		// 										e.target.files?.[0] || null
-		// 									)
-		// 								}
-		// 							/>
-		// 						</div>
-		// 						<Button
-		// 							onClick={() => {
-		// 								if (selectedFile && newTrackTitle) {
-		// 									// uploadNewTrack would be implemented here
-		// 									toast({
-		// 										title: "Track uploaded",
-		// 										description:
-		// 											"Track uploaded successfully",
-		// 									});
-		// 									setNewTrackTitle("");
-		// 									setSelectedFile(null);
-		// 								}
-		// 							}}
-		// 							disabled={!selectedFile || !newTrackTitle}
-		// 						>
-		// 							<Upload className="h-4 w-4 mr-1" />
-		// 							Upload Track
-		// 						</Button>
-		// 					</div>
-		// 				</div>
+		const handleUpload = async () => {
+			if (!file || !title.trim()) {
+				toast({
+					title: "Missing information",
+					description:
+						"Please provide both track title and audio file",
+					variant: "destructive",
+				});
+				return;
+			}
 
-		// 				{/* Existing tracks */}
-		// 				<div className="space-y-3">
-		// 					<h4 className="font-medium">Existing Tracks</h4>
-		// 					{tracks.length === 0 ? (
-		// 						<p className="text-muted-foreground text-center py-4">
-		// 							No tracks available
-		// 						</p>
-		// 					) : (
-		// 						tracks.map((track) => (
-		// 							<div
-		// 								key={track.id}
-		// 								className="border rounded-lg p-3"
-		// 							>
-		// 								<div className="flex items-center justify-between mb-2">
-		// 									<h5 className="font-medium">
-		// 										{track.song_title}
-		// 									</h5>
-		// 									<Badge
-		// 										variant={
-		// 											track.is_main_track
-		// 												? "default"
-		// 												: "outline"
-		// 										}
-		// 									>
-		// 										{track.is_main_track
-		// 											? "Main"
-		// 											: "Additional"}
-		// 									</Badge>
-		// 								</div>
-		// 								<div className="grid grid-cols-2 gap-2">
-		// 									<div>
-		// 										<Label>Tempo</Label>
-		// 										<Input
-		// 											value={track.tempo || ""}
-		// 											placeholder="e.g., 120 BPM"
-		// 											readOnly
-		// 										/>
-		// 									</div>
-		// 									<div>
-		// 										<Label>
-		// 											Duration (seconds)
-		// 										</Label>
-		// 										<Input
-		// 											type="number"
-		// 											value={track.duration}
-		// 											readOnly
-		// 										/>
-		// 									</div>
-		// 								</div>
-		// 								<div className="mt-2">
-		// 									<Label>DJ Notes</Label>
-		// 									<Input
-		// 										value={track.notes || ""}
-		// 										placeholder="DJ notes or cues"
-		// 										readOnly
-		// 									/>
-		// 								</div>
-		// 							</div>
-		// 						))
-		// 					)}
-		// 				</div>
-		// 			</div>
-		// 		</DialogContent>
-		// 	</Dialog>
-		// );
-	};
+			setIsUploading(true);
 
-	if (loading) {
+			try {
+				const success = await uploadNewTrack(
+					artist.id,
+					file,
+					title.trim()
+				);
+
+				if (success) {
+					// Clear form after successful upload
+					setTitle("");
+					setFile(null);
+					if (fileInputRef.current) {
+						fileInputRef.current.value = "";
+					}
+
+					toast({
+						title: "Upload successful",
+						description: `"${title}" has been uploaded successfully`,
+					});
+				}
+			} catch (error) {
+				console.error("Upload error:", error);
+				toast({
+					title: "Upload failed",
+					description: "Failed to upload track. Please try again.",
+					variant: "destructive",
+				});
+			} finally {
+				setIsUploading(false);
+			}
+		};
+
+		const clearForm = () => {
+			setTitle("");
+			setFile(null);
+			if (fileInputRef.current) {
+				fileInputRef.current.value = "";
+			}
+		};
+
 		return (
-			<div className="min-h-screen flex items-center justify-center bg-background">
-				<div className="text-center">
-					<div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-					<p className="mt-2 text-muted-foreground">
-						Loading DJ dashboard...
-					</p>
-				</div>
-			</div>
+			<Card className="mt-4 border-2 border-dashed border-muted-foreground/25">
+				<CardHeader>
+					<div className="flex items-center justify-between">
+						<CardTitle className="text-sm flex items-center gap-2">
+							<Upload className="h-4 w-4" />
+							Upload New Track
+						</CardTitle>
+						{(title.trim() || file) && (
+							<Button
+								variant="ghost"
+								size="sm"
+								onClick={clearForm}
+								className="text-muted-foreground hover:text-foreground"
+							>
+								Clear
+							</Button>
+						)}
+					</div>
+				</CardHeader>
+				<CardContent className="space-y-4">
+					<div>
+						<Label htmlFor={`track-title-${artist.id}`}>
+							Track Title *
+						</Label>
+						<Input
+							id={`track-title-${artist.id}`}
+							value={title}
+							onChange={(e) => setTitle(e.target.value)}
+							placeholder="Enter track title"
+							className="focus:ring-2 focus:ring-primary"
+							disabled={isUploading}
+						/>
+					</div>
+
+					<div>
+						<Label htmlFor={`track-file-${artist.id}`}>
+							Audio File *
+						</Label>
+						<Input
+							ref={fileInputRef}
+							id={`track-file-${artist.id}`}
+							type="file"
+							accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac"
+							onChange={(e) =>
+								setFile(e.target.files?.[0] || null)
+							}
+							className="focus:ring-2 focus:ring-primary"
+							disabled={isUploading}
+						/>
+						{file && (
+							<div className="mt-2 p-2 bg-muted rounded-md">
+								<p className="text-sm font-medium text-foreground">
+									Selected: {file.name}
+								</p>
+								<p className="text-xs text-muted-foreground">
+									Size: {(file.size / 1024 / 1024).toFixed(2)}{" "}
+									MB
+								</p>
+							</div>
+						)}
+					</div>
+
+					<div className="flex gap-2">
+						<Button
+							onClick={handleUpload}
+							disabled={!file || !title.trim() || isUploading}
+							className="flex-1"
+						>
+							{isUploading ? (
+								<>
+									<RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+									Uploading...
+								</>
+							) : (
+								<>
+									<Upload className="h-4 w-4 mr-2" />
+									Upload Track
+								</>
+							)}
+						</Button>
+
+						{(title.trim() || file) && (
+							<Button
+								variant="outline"
+								onClick={clearForm}
+								disabled={isUploading}
+							>
+								Cancel
+							</Button>
+						)}
+					</div>
+				</CardContent>
+			</Card>
 		);
-	}
+	};
 
 	return (
 		<div className="min-h-screen bg-background">
@@ -937,16 +1150,41 @@ export default function DJDashboard() {
 						<h2 className="text-xl font-semibold">
 							Performance Order
 						</h2>
-						{selectedPerformanceDate && (
-							<Badge
+						<div className="flex items-center gap-4">
+							<Button
+								onClick={downloadAllMusic}
+								disabled={
+									downloadingAll || musicTracks.length === 0
+								}
 								variant="outline"
-								className="flex items-center gap-1"
+								className="flex items-center gap-2"
 							>
-								<Calendar className="h-3 w-3" />
-								{formatDateForDropdown(selectedPerformanceDate)}
-							</Badge>
-						)}
+								{downloadingAll ? (
+									<>
+										<RefreshCw className="h-4 w-4 animate-spin" />
+										Downloading...
+									</>
+								) : (
+									<>
+										<Download className="h-4 w-4" />
+										Download All Music
+									</>
+								)}
+							</Button>
+							{selectedPerformanceDate && (
+								<Badge
+									variant="outline"
+									className="flex items-center gap-1"
+								>
+									<Calendar className="h-3 w-3" />
+									{formatDateForDropdown(
+										selectedPerformanceDate
+									)}
+								</Badge>
+							)}
+						</div>
 					</div>
+
 					<div className="space-y-4">
 						{(() => {
 							// Filter performance items by selected date
@@ -972,7 +1210,6 @@ export default function DJDashboard() {
 									}
 
 									if (item.type === "cue") {
-										// Cues are already filtered by performance date in the API call
 										return true;
 									}
 
@@ -999,156 +1236,402 @@ export default function DJDashboard() {
 									</div>
 								</Card>
 							) : (
-								filteredItems.map((item, index) => (
-									<Card
-										key={item.id}
-										className={`transition-all duration-200 ${getRowColorClasses(
-											item.status
-										)}`}
-									>
-										<CardContent className="p-6">
-											<div className="flex items-center justify-between">
-												<div className="flex items-center space-x-4">
-													<div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary text-primary-foreground text-sm font-bold">
-														{index + 1}
-													</div>
-													{item.type === "artist" &&
-														item.artist && (
-															<div>
-																<h3 className="text-lg font-semibold">
-																	{
-																		item
-																			.artist
-																			.artist_name
-																	}
-																</h3>
-																<div className="flex items-center gap-2 mt-1">
-																	<Badge variant="outline">
-																		{
-																			item
-																				.artist
-																				.style
-																		}
-																	</Badge>
-																	<span className="text-sm text-muted-foreground flex items-center gap-1">
-																		<Clock className="h-3 w-3" />
-																		{getDisplayDuration(
-																			item.artist
-																		)}
-																	</span>
-																	{item.artist
-																		.rehearsal_completed && (
-																		<Badge
-																			variant="secondary"
-																			className="flex items-center gap-1"
-																		>
-																			<CheckCircle className="h-3 w-3" />
-																			Rehearsed
-																		</Badge>
-																	)}
-																	{getQualityBadge(
-																		item
-																			.artist
-																			.quality_rating
-																	)}
+								<Accordion
+									type="multiple"
+									className="space-y-4"
+								>
+									{filteredItems.map((item, index) => (
+										<Card
+											key={item.id}
+											className={`transition-all duration-200 ${getRowColorClasses(
+												item.status
+											)}`}
+										>
+											{item.type === "artist" &&
+											item.artist ? (
+												<AccordionItem
+													value={item.id}
+													className="border-none"
+												>
+													<AccordionTrigger className="px-6 py-4 hover:no-underline">
+														<div className="flex items-center justify-between w-full mr-4">
+															<div className="flex items-center space-x-4">
+																<div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary text-primary-foreground text-sm font-bold">
+																	{index + 1}
 																</div>
-															</div>
-														)}
-													{item.type === "cue" &&
-														item.cue && (
-															<div className="flex items-center gap-3">
-																{(() => {
-																	const IconComponent =
-																		getCueIcon(
-																			item.cue!
-																				.type
-																		);
-																	return (
-																		<IconComponent className="h-5 w-5" />
-																	);
-																})()}
-																<div>
+																<div className="text-left">
 																	<h3 className="text-lg font-semibold">
 																		{
 																			item
-																				.cue
-																				.title
+																				.artist
+																				.artist_name
 																		}
 																	</h3>
 																	<div className="flex items-center gap-2 mt-1">
-																		<span className="text-sm text-muted-foreground flex items-center gap-1">
-																			<Clock className="h-3 w-3" />
+																		<Badge variant="outline">
 																			{
 																				item
-																					.cue
-																					.duration
-																			}{" "}
-																			min
+																					.artist
+																					.style
+																			}
+																		</Badge>
+																		<span className="text-sm text-muted-foreground flex items-center gap-1">
+																			<Clock className="h-3 w-3" />
+																			{getDisplayDuration(
+																				item.artist
+																			)}
 																		</span>
 																		{item
-																			.cue
-																			.notes && (
-																			<span className="text-sm text-muted-foreground">
-																				•{" "}
-																				{
-																					item
-																						.cue
-																						.notes
-																				}
-																			</span>
+																			.artist
+																			.rehearsal_completed && (
+																			<Badge
+																				variant="secondary"
+																				className="flex items-center gap-1"
+																			>
+																				<CheckCircle className="h-3 w-3" />
+																				Rehearsed
+																			</Badge>
+																		)}
+																		{getQualityBadge(
+																			item
+																				.artist
+																				.quality_rating
 																		)}
 																	</div>
 																</div>
 															</div>
-														)}
-												</div>
-												<div className="flex items-center gap-4">
-													<Badge
-														variant={
-															item.status ===
-															"completed"
-																? "destructive"
-																: item.status ===
-																  "currently_on_stage"
-																? "default"
-																: "outline"
-														}
-													>
-														{item.status ===
-															"not_started" &&
-															"Not Started"}
-														{item.status ===
-															"next_on_deck" &&
-															"Next on Deck"}
-														{item.status ===
-															"next_on_stage" &&
-															"Next on Stage"}
-														{item.status ===
-															"currently_on_stage" &&
-															"Currently on Stage"}
-														{item.status ===
-															"completed" &&
-															"Completed"}
-													</Badge>
-													{item.type === "artist" && (
-														<div className="flex items-center gap-2">
-															{/* <MusicEditDialog
-																artistId={
-																	item.artist!
-																		.id
-																}
-																tracks={getArtistTracks(
-																	item.artist!
-																		.id
-																)}
-															/> */}
+															<div className="flex items-center gap-4">
+																<Badge
+																	variant={
+																		item.status ===
+																		"completed"
+																			? "destructive"
+																			: item.status ===
+																			  "currently_on_stage"
+																			? "default"
+																			: "outline"
+																	}
+																>
+																	{item.status ===
+																		"not_started" &&
+																		"Not Started"}
+																	{item.status ===
+																		"next_on_deck" &&
+																		"Next on Deck"}
+																	{item.status ===
+																		"next_on_stage" &&
+																		"Next on Stage"}
+																	{item.status ===
+																		"currently_on_stage" &&
+																		"Currently on Stage"}
+																	{item.status ===
+																		"completed" &&
+																		"Completed"}
+																</Badge>
+															</div>
 														</div>
-													)}
-												</div>
-											</div>
-										</CardContent>
-									</Card>
-								))
+													</AccordionTrigger>
+													<AccordionContent className="px-6 pb-6">
+														<div className="space-y-6">
+															{/* Music Tracks Section */}
+															<div>
+																<h4 className="font-medium mb-4 flex items-center gap-2">
+																	<FileMusic className="h-4 w-4" />
+																	Music Tracks
+																	& Timing
+																</h4>
+																{(() => {
+																	const artistTracks =
+																		getArtistTracks(
+																			item.artist!
+																				.id
+																		);
+																	return artistTracks.length ===
+																		0 ? (
+																		<Card className="p-4">
+																			<div className="text-center text-muted-foreground">
+																				<FileMusic className="h-8 w-8 mx-auto mb-2 opacity-50" />
+																				<p>
+																					No
+																					music
+																					tracks
+																					uploaded
+																				</p>
+																			</div>
+																		</Card>
+																	) : (
+																		<div className="space-y-3">
+																			{artistTracks.map(
+																				(
+																					track,
+																					trackIndex
+																				) => (
+																					<Card
+																						key={
+																							trackIndex
+																						}
+																						className="p-4"
+																					>
+																						<div className="flex items-center justify-between mb-3">
+																							<div className="flex items-center gap-3">
+																								<h5 className="font-medium">
+																									{
+																										track.song_title
+																									}
+																								</h5>
+																								<Badge
+																									variant={
+																										track.is_main_track
+																											? "default"
+																											: "outline"
+																									}
+																								>
+																									{track.is_main_track
+																										? "Main Track"
+																										: "Additional"}
+																								</Badge>
+																							</div>
+																							<Button
+																								variant="destructive"
+																								size="sm"
+																								onClick={() => {
+																									if (
+																										confirm(
+																											`Delete "${track.song_title}"?`
+																										)
+																									) {
+																										deleteTrack(
+																											item.artist!
+																												.id,
+																											trackIndex
+																										);
+																									}
+																								}}
+																							>
+																								<Trash2 className="h-4 w-4 mr-1" />
+																								Delete
+																							</Button>
+																						</div>
+
+																						{track.file_url ? (
+																							<AudioPlayer
+																								track={
+																									track
+																								}
+																							/>
+																						) : (
+																							<div className="bg-muted/50 rounded-lg p-3">
+																								<div className="flex items-center gap-2 text-muted-foreground">
+																									<AlertTriangle className="h-4 w-4" />
+																									<span className="text-sm">
+																										No
+																										audio
+																										file
+																										uploaded
+																									</span>
+																								</div>
+																							</div>
+																						)}
+
+																						<div className="grid grid-cols-2 gap-4 mt-3 text-sm">
+																							<div>
+																								<Label className="text-xs text-muted-foreground">
+																									Tempo
+																								</Label>
+																								<p className="font-medium">
+																									{track.tempo ||
+																										"Not specified"}
+																								</p>
+																							</div>
+																							<div>
+																								<Label className="text-xs text-muted-foreground">
+																									Duration
+																								</Label>
+																								<p className="font-medium">
+																									{formatDuration(
+																										track.duration
+																									)}
+																								</p>
+																							</div>
+																						</div>
+
+																						{track.notes && (
+																							<div className="mt-3 p-3 bg-muted rounded-lg">
+																								<Label className="text-xs text-muted-foreground">
+																									Artist
+																									Notes
+																								</Label>
+																								<p className="text-sm mt-1">
+																									{
+																										track.notes
+																									}
+																								</p>
+																							</div>
+																						)}
+																					</Card>
+																				)
+																			)}
+																		</div>
+																	);
+																})()}
+															</div>
+
+															{/* DJ Notes Section */}
+															<div>
+																<h4 className="font-medium mb-4 flex items-center gap-2">
+																	<Volume2 className="h-4 w-4" />
+																	DJ Notes
+																</h4>
+																<div className="space-y-3">
+																	<Textarea
+																		value={
+																			djNotesState[
+																				item.artist!
+																					.id
+																			] ||
+																			""
+																		}
+																		onChange={(
+																			e
+																		) =>
+																			setDjNotesState(
+																				(
+																					prev
+																				) => ({
+																					...prev,
+																					[item.artist!
+																						.id]:
+																						e
+																							.target
+																							.value,
+																				})
+																			)
+																		}
+																		placeholder="Add your DJ notes, cues, and timing information here..."
+																		className="min-h-[100px]"
+																	/>
+																	<Button
+																		onClick={() =>
+																			saveDjNotes(
+																				item.artist!
+																					.id
+																			)
+																		}
+																		size="sm"
+																	>
+																		<Save className="h-4 w-4 mr-2" />
+																		Save DJ
+																		Notes
+																	</Button>
+																</div>
+															</div>
+
+															{/* Upload New Track Section */}
+															<div>
+																<h4 className="font-medium mb-4 flex items-center gap-2">
+																	<Upload className="h-4 w-4" />
+																	Upload New
+																	Track
+																</h4>
+																<ArtistUploadSection
+																	artist={
+																		item.artist
+																	}
+																/>
+															</div>
+														</div>
+													</AccordionContent>
+												</AccordionItem>
+											) : (
+												// Cue items (non-expandable)
+												<CardContent className="p-6">
+													<div className="flex items-center justify-between">
+														<div className="flex items-center space-x-4">
+															<div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary text-primary-foreground text-sm font-bold">
+																{index + 1}
+															</div>
+															{item.type ===
+																"cue" &&
+																item.cue && (
+																	<div className="flex items-center gap-3">
+																		{(() => {
+																			const IconComponent =
+																				getCueIcon(
+																					item.cue!
+																						.type
+																				);
+																			return (
+																				<IconComponent className="h-5 w-5" />
+																			);
+																		})()}
+																		<div>
+																			<h3 className="text-lg font-semibold">
+																				{
+																					item
+																						.cue
+																						.title
+																				}
+																			</h3>
+																			<div className="flex items-center gap-2 mt-1">
+																				<span className="text-sm text-muted-foreground flex items-center gap-1">
+																					<Clock className="h-3 w-3" />
+																					{
+																						item
+																							.cue
+																							.duration
+																					}{" "}
+																					min
+																				</span>
+																				{item
+																					.cue
+																					.notes && (
+																					<span className="text-sm text-muted-foreground">
+																						•{" "}
+																						{
+																							item
+																								.cue
+																								.notes
+																						}
+																					</span>
+																				)}
+																			</div>
+																		</div>
+																	</div>
+																)}
+														</div>
+														<Badge
+															variant={
+																item.status ===
+																"completed"
+																	? "destructive"
+																	: item.status ===
+																	  "currently_on_stage"
+																	? "default"
+																	: "outline"
+															}
+														>
+															{item.status ===
+																"not_started" &&
+																"Not Started"}
+															{item.status ===
+																"next_on_deck" &&
+																"Next on Deck"}
+															{item.status ===
+																"next_on_stage" &&
+																"Next on Stage"}
+															{item.status ===
+																"currently_on_stage" &&
+																"Currently on Stage"}
+															{item.status ===
+																"completed" &&
+																"Completed"}
+														</Badge>
+													</div>
+												</CardContent>
+											)}
+										</Card>
+									))}
+								</Accordion>
 							);
 						})()}
 					</div>

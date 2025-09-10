@@ -49,9 +49,24 @@ import {
 	Settings,
 	RefreshCw,
 	AlertTriangle,
+	Copy,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { formatDateSimple } from "@/lib/date-utils";
+import {
+	calculateTotalShowTime,
+	formatTime,
+	formatTotalTime,
+	calculateItemTiming,
+	formatDuration,
+	getDisplayDuration,
+} from "@/lib/timing-utils";
+import {
+	apiCallWithRetry,
+	showErrorToast,
+	isNetworkError,
+} from "@/lib/error-handling";
+import { createWebSocketManager } from "@/lib/websocket-manager";
 
 interface Artist {
 	id: string;
@@ -148,89 +163,19 @@ export default function PerformanceOrder() {
 		emergency_code: "green",
 	});
 
-	// Calculate show timings
-	const calculateTotalShowTime = () => {
-		return showOrderItems.reduce((total, item) => {
-			if (item.type === "artist" && item.artist) {
-				// Use actual duration if available, otherwise fall back to performance duration
-				const duration = item.artist.actual_duration
-					? Math.ceil(item.artist.actual_duration / 60) // Convert seconds to minutes
-					: item.artist.performance_duration || 0;
-				return total + duration;
-			} else if (item.type === "cue" && item.cue) {
-				return total + (item.cue.duration || 0);
-			}
-			return total;
-		}, 0);
-	};
-
-	const formatTime = (minutes: number) => {
-		const hours = Math.floor(minutes / 60);
-		const mins = minutes % 60;
-		return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
-	};
-
-	const calculateItemTiming = (index: number) => {
-		if (!eventTimings.show_start_time) return { start: "", end: "" };
-
-		const [hours, minutes] = eventTimings.show_start_time
-			.split(":")
-			.map(Number);
-		let currentTime = hours * 60 + minutes;
-
-		// Calculate start time for this item
-		for (let i = 0; i < index; i++) {
-			const item = showOrderItems[i];
-			if (item.type === "artist" && item.artist) {
-				// Use actual duration if available, otherwise fall back to performance duration
-				const duration = item.artist.actual_duration
-					? Math.ceil(item.artist.actual_duration / 60) // Convert seconds to minutes
-					: item.artist.performance_duration || 0;
-				currentTime += duration;
-			} else if (item.type === "cue" && item.cue) {
-				currentTime += item.cue.duration || 0;
-			}
-		}
-
-		const startTime = currentTime;
-		const item = showOrderItems[index];
-		let duration = 0;
-		if (item.type === "artist" && item.artist) {
-			// Use actual duration if available, otherwise fall back to performance duration
-			duration = item.artist.actual_duration
-				? Math.ceil(item.artist.actual_duration / 60) // Convert seconds to minutes
-				: item.artist.performance_duration || 0;
-		} else if (item.type === "cue" && item.cue) {
-			duration = item.cue.duration || 0;
-		}
-		const endTime = startTime + duration;
-
-		const formatMinutesToTime = (mins: number) => {
-			const h = Math.floor(mins / 60);
-			const m = mins % 60;
-			return `${h.toString().padStart(2, "0")}:${m
-				.toString()
-				.padStart(2, "0")}`;
-		};
-
-		return {
-			start: formatMinutesToTime(startTime),
-			end: formatMinutesToTime(endTime),
-		};
-	};
-
-	// Helper function to format duration
-	const formatDuration = (seconds: number | null) => {
-		if (!seconds) return "N/A";
-		const mins = Math.floor(seconds / 60);
-		const secs = seconds % 60;
-		return `${mins}:${secs.toString().padStart(2, "0")}`;
-	};
-	// Initialize cache manager and Socket.IO for real-time updates
+	// Import timing utilities
+	const {
+		calculateTotalShowTime,
+		formatTime,
+		calculateItemTiming,
+		formatDuration,
+		getDisplayDuration,
+	} = require("@/lib/timing-utils");
+	// Initialize WebSocket manager with auto-refresh polling
 	useEffect(() => {
-		let socket: any = null;
+		let wsManager: any = null;
 
-		const initializeCacheAndSocket = async () => {
+		const initializeWebSocketManager = async () => {
 			try {
 				// Initialize cache manager for this event
 				const response = await fetch(`/api/events/${eventId}/cache`, {
@@ -251,113 +196,50 @@ export default function PerformanceOrder() {
 					);
 				}
 
-				// Load Socket.IO client and connect
-				const script = document.createElement("script");
-				script.src = "/socket.io/socket.io.js";
-				script.onload = () => {
-					// @ts-ignore - Socket.IO is loaded dynamically
-					socket = io();
+				// Import and initialize WebSocket manager
+				const { createWebSocketManager } = await import(
+					"@/lib/websocket-manager"
+				);
 
-					socket.on("connect", () => {
-						console.log(
-							"Socket.IO connected for performance order"
-						);
+				wsManager = createWebSocketManager({
+					eventId,
+					role: "stage_manager",
+					userId: `stage_manager_${eventId}`,
+					showToasts: true,
+					onConnect: () => {
+						console.log("Performance Order WebSocket connected");
 						setWsConnected(true);
-
-						// Authenticate as stage manager for this event
-						socket.emit("authenticate", {
-							userId: `stage_manager_${eventId}`,
-							role: "stage_manager",
-							eventId: eventId,
-						});
-					});
-
-					// Listen for artist status updates
-					socket.on("artist_status_changed", (data: any) => {
-						console.log("Artist status changed:", data);
-						if (data.eventId === eventId) {
-							// Update local state with real-time status change
-							setShowOrderItems((prev) =>
-								prev.map((item) =>
-									item.id === data.id &&
-									item.type === "artist"
-										? {
-												...item,
-												status:
-													data.performance_status ||
-													item.status,
-										  }
-										: item
-								)
-							);
-
-							toast({
-								title: "Status updated",
-								description: `${data.artistName} status changed`,
-							});
-						}
-					});
-
-					// Listen for artist assignments
-					socket.on("artist_assigned", (data: any) => {
-						console.log("Artist assigned:", data);
-						if (data.eventId === eventId) {
-							// Refresh artists data when assignments change
-							fetchArtists();
-						}
-					});
-
-					// Listen for emergency alerts
-					socket.on("emergency-alert", (data: any) => {
-						console.log("Emergency alert:", data);
-						fetchEmergencyBroadcasts();
-						toast({
-							title: `${data.emergency_code.toUpperCase()} EMERGENCY ALERT`,
-							description: data.message,
-							variant: "destructive",
-						});
-					});
-
-					socket.on("emergency-clear", (data: any) => {
-						console.log("Emergency cleared:", data);
-						fetchEmergencyBroadcasts();
-						toast({
-							title: "Emergency alert cleared",
-							description:
-								"Emergency broadcast has been deactivated",
-						});
-					});
-
-					socket.on("disconnect", () => {
-						console.log("Socket.IO disconnected");
+					},
+					onDisconnect: () => {
+						console.log("Performance Order WebSocket disconnected");
 						setWsConnected(false);
-					});
+					},
+					onDataUpdate: () => {
+						console.log("Performance Order data update triggered");
+						fetchArtists();
+						fetchEmergencyBroadcasts();
+					},
+				});
 
-					socket.on("connect_error", (error: any) => {
-						console.error("Socket.IO connection error:", error);
-						setWsConnected(false);
-					});
-				};
+				await wsManager.initialize();
 
-				script.onerror = () => {
-					console.error("Failed to load Socket.IO client");
-					setWsConnected(false);
-				};
-
-				document.head.appendChild(script);
+				// Store reference for cleanup
+				(window as any).performanceOrderWsManager = wsManager;
 			} catch (error) {
-				console.error("Error initializing cache and WebSocket:", error);
+				console.error("Error initializing WebSocket manager:", error);
+				setWsConnected(false);
 			}
 		};
 
 		if (eventId && selectedPerformanceDate) {
-			initializeCacheAndSocket();
+			initializeWebSocketManager();
 		}
 
-		// Cleanup Socket.IO on unmount
+		// Cleanup on unmount
 		return () => {
-			if (socket) {
-				socket.disconnect();
+			if ((window as any).performanceOrderWsManager) {
+				(window as any).performanceOrderWsManager.destroy();
+				delete (window as any).performanceOrderWsManager;
 			}
 		};
 	}, [eventId, selectedPerformanceDate]);
@@ -367,7 +249,25 @@ export default function PerformanceOrder() {
 			fetchEventDates();
 			fetchEventTimings();
 		}
-	}, [eventId]);
+
+		// Listen for WebSocket toast events
+		const handleWebSocketToast = (event: CustomEvent) => {
+			const { title, description, variant } = event.detail;
+			toast({ title, description, variant });
+		};
+
+		window.addEventListener(
+			"websocket-toast",
+			handleWebSocketToast as EventListener
+		);
+
+		return () => {
+			window.removeEventListener(
+				"websocket-toast",
+				handleWebSocketToast as EventListener
+			);
+		};
+	}, [eventId, toast]);
 
 	// Separate useEffect to fetch artists when performance date changes
 	useEffect(() => {
@@ -955,11 +855,23 @@ export default function PerformanceOrder() {
 							"Artist has been added to the performance lineup",
 					});
 
+					// Emit WebSocket event for real-time updates
+					const wsManager = (window as any).performanceOrderWsManager;
+					if (wsManager) {
+						wsManager.emit("performance-order-update", {
+							eventId,
+							type: "artist",
+							action: "assigned",
+							artistId,
+							performanceDate: selectedPerformanceDate,
+						});
+					}
+
 					// Refresh from GCS after a short delay to ensure data persistence
 					console.log("Refreshing from GCS...");
 					setTimeout(() => {
 						fetchArtists();
-					}, 2000); // Longer delay for assignment to ensure GCS persistence
+					}, 1000); // Reduced delay since WebSocket will handle real-time updates
 				} else {
 					throw new Error(result.error || "Failed to assign artist");
 				}
@@ -1006,6 +918,19 @@ export default function PerformanceOrder() {
 						title: "Artist removed from show order",
 						description: "Artist removed from performance lineup",
 					});
+
+					// Emit WebSocket event for real-time updates
+					const wsManager = (window as any).performanceOrderWsManager;
+					if (wsManager) {
+						wsManager.emit("performance-order-update", {
+							eventId,
+							type: "artist",
+							action: "removed",
+							artistId: itemId,
+							performanceDate: selectedPerformanceDate,
+						});
+					}
+
 					fetchArtists();
 				} else {
 					throw new Error("Failed to remove artist");
@@ -1047,6 +972,18 @@ export default function PerformanceOrder() {
 							title: "Cue removed",
 							description: "Cue removed from show order and GCS",
 						});
+
+						// Emit WebSocket event for real-time updates
+						const wsManager = (window as any)
+							.performanceOrderWsManager;
+						if (wsManager) {
+							wsManager.emit("cue_updated", {
+								eventId,
+								cueId: itemId,
+								action: "deleted",
+								performanceDate: selectedPerformanceDate,
+							});
+						}
 					} else {
 						throw new Error(result.error || "Failed to remove cue");
 					}
@@ -1068,111 +1005,6 @@ export default function PerformanceOrder() {
 		}
 	};
 
-	// Status update function with caching integration
-	const updateItemStatus = async (
-		itemId: string,
-		newStatus: ShowOrderItem["status"]
-	) => {
-		const item = showOrderItems.find((i) => i.id === itemId);
-		if (!item) return;
-
-		// Store original status for potential revert
-		const originalStatus = item.status || "not_started";
-
-		try {
-			// Optimistic update - update UI immediately
-			setShowOrderItems((prev) =>
-				prev.map((i) =>
-					i.id === itemId ? { ...i, status: newStatus } : i
-				)
-			);
-
-			if (item.type === "artist" && item.artist) {
-				// Use the individual artist API for more reliable updates
-				const response = await fetch(
-					`/api/events/${eventId}/artists/${itemId}`,
-					{
-						method: "PATCH",
-						headers: {
-							"Content-Type": "application/json",
-						},
-						body: JSON.stringify({
-							performance_status: newStatus,
-							performance_date: selectedPerformanceDate,
-						}),
-					}
-				);
-
-				if (response.ok) {
-					const result = await response.json();
-					if (result.success) {
-						toast({
-							title: "Status updated",
-							description: `Artist status changed to ${newStatus}`,
-						});
-					} else {
-						throw new Error(
-							result.error || "Failed to update status"
-						);
-					}
-				} else {
-					const errorData = await response.json();
-					throw new Error(
-						errorData.error?.message ||
-							"Failed to update artist status"
-					);
-				}
-			} else if (item.type === "cue" && item.cue) {
-				// Update cue status
-				const response = await fetch(`/api/events/${eventId}/cues`, {
-					method: "PATCH",
-					headers: {
-						"Content-Type": "application/json",
-					},
-					body: JSON.stringify({
-						id: itemId,
-						performance_status: newStatus,
-						is_completed: newStatus === "completed",
-						performanceDate: selectedPerformanceDate,
-					}),
-				});
-
-				if (response.ok) {
-					const result = await response.json();
-					if (result.success) {
-						toast({
-							title: "Cue status updated",
-							description: `Cue status changed to ${newStatus}`,
-						});
-					} else {
-						throw new Error(
-							result.error || "Failed to update cue status"
-						);
-					}
-				} else {
-					throw new Error("Failed to update cue status");
-				}
-			}
-		} catch (error) {
-			console.error("Error updating item status:", error);
-
-			// Revert optimistic update on error
-			setShowOrderItems((prev) =>
-				prev.map((i) =>
-					i.id === itemId ? { ...i, status: originalStatus } : i
-				)
-			);
-
-			toast({
-				title: "Error updating status",
-				description:
-					error instanceof Error
-						? error.message
-						: "Failed to update status",
-				variant: "destructive",
-			});
-		}
-	};
 	// Drag and drop handler
 	const handleDragEnd = async (result: any) => {
 		if (!result.destination) return;
@@ -1247,6 +1079,17 @@ export default function PerformanceOrder() {
 				title: "Order updated",
 				description: "Performance order has been saved",
 			});
+
+			// Emit WebSocket event for real-time updates
+			const wsManager = (window as any).performanceOrderWsManager;
+			if (wsManager) {
+				wsManager.emit("performance-order-update", {
+					eventId,
+					type: "order_changed",
+					action: "reordered",
+					performanceDate: selectedPerformanceDate,
+				});
+			}
 		} catch (error) {
 			console.error("Error updating order:", error);
 			// Revert on error
@@ -1257,24 +1100,6 @@ export default function PerformanceOrder() {
 				variant: "destructive",
 			});
 		}
-	};
-
-	// Move item up or down
-	const moveItem = async (itemId: string, direction: "up" | "down") => {
-		const currentIndex = showOrderItems.findIndex(
-			(item) => item.id === itemId
-		);
-		if (currentIndex === -1) return;
-
-		const newIndex =
-			direction === "up" ? currentIndex - 1 : currentIndex + 1;
-		if (newIndex < 0 || newIndex >= showOrderItems.length) return;
-
-		// Simulate drag and drop
-		await handleDragEnd({
-			source: { index: currentIndex },
-			destination: { index: newIndex },
-		});
 	};
 
 	// Add cue to show order
@@ -1332,6 +1157,19 @@ export default function PerformanceOrder() {
 						title: "Cue added",
 						description: `${cueLabels[cueType]} cue added to show order`,
 					});
+
+					// Emit WebSocket event for real-time updates
+					const wsManager = (window as any).performanceOrderWsManager;
+					if (wsManager) {
+						wsManager.emit("cue_updated", {
+							eventId,
+							cueId: result.data?.id || newCue.id,
+							action: "created",
+							cue: result.data || newCue,
+							performanceDate: selectedPerformanceDate,
+						});
+					}
+
 					fetchArtists(); // Refresh to show new cue
 				} else {
 					throw new Error(result.error || "Failed to add cue");
@@ -1416,6 +1254,23 @@ export default function PerformanceOrder() {
 						title: "Cue updated",
 						description: "Cue details have been saved to GCS",
 					});
+
+					// Emit WebSocket event for real-time updates
+					const wsManager = (window as any).performanceOrderWsManager;
+					if (wsManager) {
+						wsManager.emit("cue_updated", {
+							eventId,
+							cueId: editingCue.id,
+							action: "updated",
+							cue: {
+								...editingCue,
+								title: editForm.title,
+								duration: editForm.duration,
+								notes: editForm.notes,
+							},
+							performanceDate: selectedPerformanceDate,
+						});
+					}
 				} else {
 					throw new Error(result.error || "Failed to update cue");
 				}
@@ -1449,6 +1304,222 @@ export default function PerformanceOrder() {
 		};
 		return iconMap[cueType];
 	};
+
+	const updateItemStatus = async (
+		itemId: string,
+		newStatus: ShowOrderItem["status"]
+	) => {
+		// Find the item to determine if it's an artist or cue
+		const item = showOrderItems.find((i) => i.id === itemId);
+		if (!item) {
+			console.error(`Item ${itemId} not found`);
+			return;
+		}
+
+		// Store original status for potential revert
+		const originalStatus = item.status;
+
+		try {
+			console.log(`Updating status for item ${itemId} to ${newStatus}`);
+
+			// Update local state immediately for better UX
+			setShowOrderItems((prevItems) =>
+				prevItems.map((i) =>
+					i.id === itemId ? { ...i, status: newStatus } : i
+				)
+			);
+
+			if (item.type === "artist" && item.artist) {
+				// Update artist status via API
+				const response = await fetch(
+					`/api/events/${eventId}/artists/${item.artist.id}`,
+					{
+						method: "PATCH",
+						headers: {
+							"Content-Type": "application/json",
+						},
+						body: JSON.stringify({
+							performance_status: newStatus,
+						}),
+					}
+				);
+
+				if (response.ok) {
+					const result = await response.json();
+					console.log("Artist status update result:", result);
+
+					// Emit WebSocket event for real-time updates
+					const wsManager = (window as any).performanceOrderWsManager;
+					if (wsManager) {
+						wsManager.emit("artist_status_changed", {
+							eventId,
+							artistId: item.artist.id,
+							artist_name: item.artist.artist_name,
+							status: newStatus,
+							performanceDate: selectedPerformanceDate,
+							timestamp: new Date().toISOString(),
+						});
+					}
+
+					toast({
+						title: "Status Updated",
+						description: `${
+							item.artist.artist_name
+						} is now ${newStatus.replace("_", " ")}`,
+					});
+				} else {
+					throw new Error("Failed to update artist status");
+				}
+			} else if (item.type === "cue" && item.cue) {
+				// Update cue status via API
+				const response = await fetch(`/api/events/${eventId}/cues`, {
+					method: "PATCH",
+					headers: {
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({
+						id: item.cue.id,
+						performance_status: newStatus,
+						performanceDate: selectedPerformanceDate,
+					}),
+				});
+
+				if (response.ok) {
+					const result = await response.json();
+					console.log("Cue status update result:", result);
+
+					// Emit WebSocket event for real-time updates
+					const wsManager = (window as any).performanceOrderWsManager;
+					if (wsManager) {
+						wsManager.emit("cue_updated", {
+							eventId,
+							cueId: item.cue.id,
+							action: "status_updated",
+							cue: item.cue,
+							status: newStatus,
+							performanceDate: selectedPerformanceDate,
+							timestamp: new Date().toISOString(),
+						});
+					}
+
+					toast({
+						title: "Cue Status Updated",
+						description: `${
+							item.cue.title
+						} is now ${newStatus.replace("_", " ")}`,
+					});
+				} else {
+					throw new Error("Failed to update cue status");
+				}
+			}
+
+			// Refresh data after a short delay to ensure consistency
+			setTimeout(() => {
+				fetchArtists();
+			}, 1000);
+		} catch (error) {
+			console.error("Error updating item status:", error);
+
+			// Revert local state on error using the stored original status
+			setShowOrderItems((prevItems) =>
+				prevItems.map((i) =>
+					i.id === itemId ? { ...i, status: originalStatus } : i
+				)
+			);
+
+			toast({
+				title: "Error updating status",
+				description:
+					error instanceof Error
+						? error.message
+						: "Failed to update status",
+				variant: "destructive",
+			});
+		}
+	};
+
+	const moveItem = async (itemId: string, direction: "up" | "down") => {
+		try {
+			console.log(`Moving item ${itemId} ${direction}`);
+
+			const currentIndex = showOrderItems.findIndex(
+				(item) => item.id === itemId
+			);
+			if (currentIndex === -1) return;
+
+			const newIndex =
+				direction === "up" ? currentIndex - 1 : currentIndex + 1;
+			if (newIndex < 0 || newIndex >= showOrderItems.length) return;
+
+			// Create new array with swapped items
+			const newItems = [...showOrderItems];
+			[newItems[currentIndex], newItems[newIndex]] = [
+				newItems[newIndex],
+				newItems[currentIndex],
+			];
+
+			// Update performance orders
+			newItems.forEach((item, index) => {
+				item.performance_order = index + 1;
+			});
+
+			// Update local state immediately
+			setShowOrderItems(newItems);
+
+			// Update each item's order in the database
+			for (const item of newItems) {
+				if (item.type === "artist" && item.artist) {
+					await fetch(
+						`/api/events/${eventId}/artists/${item.artist.id}`,
+						{
+							method: "PATCH",
+							headers: { "Content-Type": "application/json" },
+							body: JSON.stringify({
+								performance_order: item.performance_order,
+							}),
+						}
+					);
+				} else if (item.type === "cue" && item.cue) {
+					await fetch(`/api/events/${eventId}/cues`, {
+						method: "PATCH",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify({
+							cueId: item.cue.id,
+							performance_order: item.performance_order,
+							performanceDate: selectedPerformanceDate,
+						}),
+					});
+				}
+			}
+
+			// Emit WebSocket event for real-time updates
+			const wsManager = (window as any).performanceOrderWsManager;
+			if (wsManager) {
+				wsManager.emit("performance-order-update", {
+					eventId,
+					action: "reordered",
+					performanceDate: selectedPerformanceDate,
+					timestamp: new Date().toISOString(),
+				});
+			}
+
+			toast({
+				title: "Order Updated",
+				description: "Performance order has been updated",
+			});
+		} catch (error) {
+			console.error("Error moving item:", error);
+			// Refresh data to restore correct order
+			fetchArtists();
+
+			toast({
+				title: "Error updating order",
+				description: "Failed to update performance order",
+				variant: "destructive",
+			});
+		}
+	};
+
 	// Emergency broadcast functions
 	const fetchEmergencyBroadcasts = async () => {
 		try {
@@ -1596,6 +1667,24 @@ export default function PerformanceOrder() {
 			case "not_started":
 			default:
 				return "bg-white border-gray-200 text-gray-900 shadow-sm";
+		}
+	};
+
+	const copyArtistPortalLink = async () => {
+		const artistPortalUrl = `${window.location.origin}/artist-register/${eventId}`;
+		try {
+			await navigator.clipboard.writeText(artistPortalUrl);
+			toast({
+				title: "Link copied!",
+				description: "Artist portal link copied to clipboard",
+			});
+		} catch (error) {
+			console.error("Failed to copy link:", error);
+			toast({
+				title: "Copy failed",
+				description: "Failed to copy link to clipboard",
+				variant: "destructive",
+			});
 		}
 	};
 
@@ -1879,7 +1968,11 @@ export default function PerformanceOrder() {
 										Total Show Time
 									</p>
 									<p className="text-2xl font-bold">
-										{formatTime(calculateTotalShowTime())}
+										{formatTotalTime(
+											calculateTotalShowTime(
+												showOrderItems
+											)
+										)}
 									</p>
 								</div>
 								<Timer className="h-8 w-8 text-muted-foreground" />
@@ -2007,15 +2100,9 @@ export default function PerformanceOrder() {
 																									.style
 																							}{" "}
 																							•{" "}
-																							{item
-																								.artist
-																								.actual_duration
-																								? formatDuration(
-																										item
-																											.artist
-																											.actual_duration
-																								  )
-																								: `${item.artist.performance_duration} min`}
+																							{getDisplayDuration(
+																								item.artist
+																							)}
 																							{item
 																								.artist
 																								.quality_rating &&
@@ -2079,16 +2166,20 @@ export default function PerformanceOrder() {
 																				<div className="text-xs text-muted-foreground">
 																					{
 																						calculateItemTiming(
-																							index
+																							showOrderItems,
+																							index,
+																							eventTimings.show_start_time
 																						)
-																							.start
+																							.startTime
 																					}{" "}
 																					-{" "}
 																					{
 																						calculateItemTiming(
-																							index
+																							showOrderItems,
+																							index,
+																							eventTimings.show_start_time
 																						)
-																							.end
+																							.endTime
 																					}
 																				</div>
 																			)}

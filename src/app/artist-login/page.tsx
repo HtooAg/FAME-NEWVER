@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 // import { useToast } from "@/hooks/use-toast";
 import { User, Mail } from "lucide-react";
+import Image from "next/image";
 
 export default function ArtistLogin() {
 	const router = useRouter();
@@ -17,9 +18,10 @@ export default function ArtistLogin() {
 	const [formData, setFormData] = useState({
 		email: "",
 		artistName: "",
+		artistId: "",
 	});
 
-	// Check if user is already logged in
+	// Check if user is already logged in and pre-fill form from URL params
 	useEffect(() => {
 		const checkSession = async () => {
 			try {
@@ -53,6 +55,20 @@ export default function ArtistLogin() {
 			}
 		};
 
+		// Pre-fill form from URL parameters
+		const urlParams = new URLSearchParams(window.location.search);
+		const artistId = urlParams.get("artistId");
+		const artistName = urlParams.get("artistName");
+		const email = urlParams.get("email");
+
+		if (artistId || artistName || email) {
+			setFormData({
+				email: email || "",
+				artistName: artistName || "",
+				artistId: artistId || "",
+			});
+		}
+
 		checkSession();
 	}, [router]);
 
@@ -61,46 +77,76 @@ export default function ArtistLogin() {
 		setLoading(true);
 
 		try {
-			// In a real app, this would authenticate the artist
-			// For now, we'll simulate finding the artist by email and name
+			// Validate artist credentials
 			const response = await fetch(`/api/artists/login`, {
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",
 				},
-				body: JSON.stringify(formData),
+				body: JSON.stringify({
+					email: formData.email,
+					artistName: formData.artistName,
+					artistId: formData.artistId,
+				}),
 			});
 
 			if (response.ok) {
 				const data = await response.json();
-				// Store artist session (in a real app, use proper authentication)
-				localStorage.setItem(
-					"artistSession",
-					JSON.stringify(data.artist)
-				);
+				console.log("Login API response:", data); // Debug log
 
-				// toast({
-				// 	title: "Login Successful",
-				// 	description:
-				// 		"Welcome back! Redirecting to your dashboard...",
-				// });
-				console.log("Login Successful - Redirecting to dashboard...");
+				// Check if we have the basic required artist data
+				if (data.success && data.data && data.data.artist) {
+					const artist = data.data.artist;
+					console.log("Artist data:", artist); // Debug log
 
-				// Redirect to artist dashboard
-				router.push("/artist-dashboard");
+					// Validate that we have the minimum required fields
+					if (
+						artist.id &&
+						(artist.artistName || artist.artist_name)
+					) {
+						// Store artist session
+						localStorage.setItem(
+							"artistSession",
+							JSON.stringify(artist)
+						);
+
+						console.log(
+							"Login Successful - Redirecting to dashboard..."
+						);
+
+						// Redirect to artist dashboard with artist ID
+						router.push(`/artist-dashboard/${artist.id}`);
+					} else {
+						console.error("Missing required fields:", {
+							id: artist.id,
+							artistName: artist.artistName,
+							artist_name: artist.artist_name,
+						});
+						throw new Error(
+							"Artist data is incomplete. Missing ID or name."
+						);
+					}
+				} else {
+					console.error("Invalid response structure:", data);
+					throw new Error("Invalid response from server");
+				}
 			} else {
-				throw new Error("Artist not found");
+				const errorData = await response.json();
+				console.error("Login API error:", errorData);
+				throw new Error(
+					errorData.error?.message ||
+						errorData.message ||
+						"Artist not found"
+				);
 			}
 		} catch (error) {
 			console.error("Login error:", error);
-			// toast({
-			// 	title: "Login Failed",
-			// 	description:
-			// 		"Artist not found. Please check your email and artist name.",
-			// 	variant: "destructive",
-			// });
 			alert(
-				"Login Failed: Artist not found. Please check your email and artist name."
+				`Login Failed: ${
+					error instanceof Error
+						? error.message
+						: "Artist not found. Please check your email and artist name."
+				}`
 			);
 		} finally {
 			setLoading(false);
@@ -123,8 +169,14 @@ export default function ArtistLogin() {
 		<div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-50 flex items-center justify-center p-4">
 			<Card className="w-full max-w-md">
 				<CardHeader className="text-center">
-					<div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-purple-100">
-						<User className="h-8 w-8 text-purple-600" />
+					<div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center">
+						<Image
+							src="/fame-logo.png"
+							alt="FAME Logo"
+							width={80}
+							height={80}
+							className="object-contain"
+						/>
 					</div>
 					<CardTitle className="text-2xl font-bold">
 						Artist Login
@@ -135,6 +187,26 @@ export default function ArtistLogin() {
 				</CardHeader>
 				<CardContent>
 					<form onSubmit={handleSubmit} className="space-y-4">
+						<div className="space-y-2">
+							<Label htmlFor="artistId">
+								Artist ID (Optional)
+							</Label>
+							<div className="relative">
+								<User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+								<Input
+									id="artistId"
+									placeholder="Enter your artist ID (if you have it)"
+									value={formData.artistId}
+									onChange={(e) =>
+										setFormData({
+											...formData,
+											artistId: e.target.value,
+										})
+									}
+									className="pl-10"
+								/>
+							</div>
+						</div>
 						<div className="space-y-2">
 							<Label htmlFor="email">Email Address</Label>
 							<div className="relative">
@@ -184,18 +256,6 @@ export default function ArtistLogin() {
 							{loading ? "Signing In..." : "Sign In"}
 						</Button>
 					</form>
-					<div className="mt-6 text-center">
-						<p className="text-sm text-muted-foreground">
-							Don't have an account?{" "}
-							<Button
-								variant="link"
-								className="p-0 h-auto"
-								onClick={() => router.push("/")}
-							>
-								Register for an event
-							</Button>
-						</p>
-					</div>
 				</CardContent>
 			</Card>
 		</div>

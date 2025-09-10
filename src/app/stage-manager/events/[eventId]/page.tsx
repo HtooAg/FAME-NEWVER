@@ -18,16 +18,19 @@ import {
 	Music,
 	Settings,
 	ExternalLink,
+	Copy,
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { format, parseISO } from "date-fns";
 import { Event } from "@/lib/types/event";
 import { motion } from "framer-motion";
+import { useToast } from "@/hooks/use-toast";
 
 export default function EventManagementPage() {
 	const params = useParams();
 	const eventId = params.eventId as string;
+	const { toast } = useToast();
 
 	const [event, setEvent] = useState<Event | null>(null);
 	const [user, setUser] = useState<any>(null);
@@ -112,6 +115,29 @@ export default function EventManagementPage() {
 				return "bg-red-100 text-red-800";
 			default:
 				return "bg-gray-100 text-gray-800";
+		}
+	};
+
+	const copyArtistPortalLink = async () => {
+		const origin =
+			typeof window !== "undefined"
+				? window.location.origin
+				: process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
+		const artistPortalUrl = `${origin}/artist-register/${eventId}`;
+
+		try {
+			await navigator.clipboard.writeText(artistPortalUrl);
+			toast({
+				title: "Link copied!",
+				description: "Artist portal link copied to clipboard",
+			});
+		} catch (error) {
+			console.error("Failed to copy link:", error);
+			toast({
+				title: "Copy failed",
+				description: "Failed to copy link to clipboard",
+				variant: "destructive",
+			});
 		}
 	};
 
@@ -239,16 +265,28 @@ export default function EventManagementPage() {
 									</CardDescription>
 								</CardHeader>
 								<CardContent className="space-y-4">
-									<div className="p-2 bg-gray-100 rounded-md text-sm break-all text-gray-700">
-										{(() => {
-											const origin =
-												typeof window !== "undefined"
-													? window.location.origin
-													: process.env
-															.NEXT_PUBLIC_BASE_URL ||
-													  "http://localhost:3000";
-											return `${origin}/artist-register/${eventId}`;
-										})()}
+									<div className="space-y-2">
+										<div className="p-2 bg-gray-100 rounded-md text-sm break-all text-gray-700">
+											{(() => {
+												const origin =
+													typeof window !==
+													"undefined"
+														? window.location.origin
+														: process.env
+																.NEXT_PUBLIC_BASE_URL ||
+														  "http://localhost:3000";
+												return `${origin}/artist-register/${eventId}`;
+											})()}
+										</div>
+										<Button
+											onClick={copyArtistPortalLink}
+											variant="outline"
+											size="sm"
+											className="w-full"
+										>
+											<Copy className="h-4 w-4 mr-2" />
+											Copy Link
+										</Button>
 									</div>
 									<Link
 										href={`/stage-manager/events/${eventId}/artists`}

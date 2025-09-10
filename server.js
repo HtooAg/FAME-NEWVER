@@ -164,6 +164,40 @@ app.prepare()
 				});
 			});
 
+			// Handle custom cue updates
+			socket.on("cue_updated", (data) => {
+				const { eventId, cueId, action, cue } = data;
+				console.log(
+					`Cue update for event ${eventId}: ${action} cue ${cueId}`
+				);
+
+				// Broadcast to all users connected to this event
+				io.to(`event_${eventId}`).emit("cue_updated", {
+					eventId,
+					cueId,
+					action,
+					cue,
+					timestamp: new Date().toISOString(),
+				});
+			});
+
+			// Handle rehearsal updates
+			socket.on("rehearsal_updated", (data) => {
+				const { eventId, artistId, action, artist } = data;
+				console.log(
+					`Rehearsal update for event ${eventId}: ${action} artist ${artistId}`
+				);
+
+				// Broadcast to all users connected to this event
+				io.to(`event_${eventId}`).emit("rehearsal_updated", {
+					eventId,
+					artistId,
+					action,
+					artist,
+					timestamp: new Date().toISOString(),
+				});
+			});
+
 			// Handle user disconnect
 			socket.on("disconnect", () => {
 				const user = connectedUsers.get(socket.id);
