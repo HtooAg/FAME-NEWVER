@@ -28,6 +28,7 @@ import {
 	Download,
 	Palette,
 	Navigation,
+	Play,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { AudioPlayer } from "@/components/ui/audio-player";
@@ -290,6 +291,14 @@ export default function ArtistDashboard() {
 								<CardContent className="space-y-4">
 									<div>
 										<p className="text-sm text-muted-foreground">
+											Artist ID
+										</p>
+										<p className="font-medium text-xs text-gray-600">
+											{profile.id}
+										</p>
+									</div>
+									<div>
+										<p className="text-sm text-muted-foreground">
 											Artist Name
 										</p>
 										<p className="font-medium">
@@ -503,7 +512,7 @@ export default function ArtistDashboard() {
 																await downloadFile(
 																	track.file_url,
 																	track.song_title ||
-																		track.songTitle
+																		track.song_title
 																);
 															}}
 															className="flex items-center gap-2"

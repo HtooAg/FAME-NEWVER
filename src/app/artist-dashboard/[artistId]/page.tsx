@@ -305,6 +305,14 @@ export default function ArtistDashboard() {
 								<CardContent className="space-y-4">
 									<div>
 										<p className="text-sm text-muted-foreground">
+											Artist ID
+										</p>
+										<p className="font-medium text-xs text-gray-600">
+											{profile.id}
+										</p>
+									</div>
+									<div>
+										<p className="text-sm text-muted-foreground">
 											Artist Name
 										</p>
 										<p className="font-medium">

@@ -6,13 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-// import { useToast } from "@/hooks/use-toast";
+import { useToast } from "@/hooks/use-toast";
+import { Toaster } from "@/components/ui/toaster";
 import { User, Mail } from "lucide-react";
 import Image from "next/image";
 
 export default function ArtistLogin() {
 	const router = useRouter();
-	// const { toast } = useToast();
+	const { toast } = useToast();
 	const [loading, setLoading] = useState(false);
 	const [checkingSession, setCheckingSession] = useState(true);
 	const [formData, setFormData] = useState({
@@ -141,13 +142,18 @@ export default function ArtistLogin() {
 			}
 		} catch (error) {
 			console.error("Login error:", error);
-			alert(
-				`Login Failed: ${
-					error instanceof Error
-						? error.message
-						: "Artist not found. Please check your email and artist name."
-				}`
-			);
+			const errorMessage =
+				error instanceof Error
+					? error.message
+					: formData.artistId && formData.artistId.trim() !== ""
+					? "Artist not found. Please check that your Artist ID, email, and artist name all match your registration."
+					: "Artist not found. Please check your email and artist name.";
+
+			toast({
+				title: "Login Failed",
+				description: errorMessage,
+				variant: "destructive",
+			});
 		} finally {
 			setLoading(false);
 		}
@@ -188,14 +194,12 @@ export default function ArtistLogin() {
 				<CardContent>
 					<form onSubmit={handleSubmit} className="space-y-4">
 						<div className="space-y-2">
-							<Label htmlFor="artistId">
-								Artist ID (Optional)
-							</Label>
+							<Label htmlFor="artistId">Artist ID</Label>
 							<div className="relative">
 								<User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
 								<Input
 									id="artistId"
-									placeholder="Enter your artist ID (if you have it)"
+									placeholder="Enter your artist ID for secure login"
 									value={formData.artistId}
 									onChange={(e) =>
 										setFormData({
@@ -258,6 +262,7 @@ export default function ArtistLogin() {
 					</form>
 				</CardContent>
 			</Card>
+			<Toaster />
 		</div>
 	);
 }

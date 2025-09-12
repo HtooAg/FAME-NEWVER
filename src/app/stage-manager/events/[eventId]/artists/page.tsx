@@ -1183,6 +1183,16 @@ Please use these credentials to access your artist dashboard.`;
 													<CardContent className="space-y-4">
 														<div>
 															<p className="text-sm text-muted-foreground">
+																Artist ID
+															</p>
+															<p className="font-medium text-xs text-gray-600">
+																{
+																	selectedArtist.id
+																}
+															</p>
+														</div>
+														<div>
+															<p className="text-sm text-muted-foreground">
 																Artist Name
 															</p>
 															<p className="font-medium">
