@@ -294,7 +294,7 @@ export default function SuperAdminPage() {
 							<Button
 								variant="outline"
 								onClick={handleLogout}
-								className="border-gray-600 text-gray-300 hover:bg-gray-800"
+								className="bg-gradient-to-br from-purple-50 to-pink-50"
 							>
 								<LogOut className="h-4 w-4 mr-2" />
 								Logout

@@ -50,6 +50,8 @@ import {
 	RefreshCw,
 	AlertTriangle,
 	Copy,
+	Music,
+	ExternalLink,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { formatDateSimple } from "@/lib/date-utils";
@@ -1918,6 +1920,102 @@ export default function PerformanceOrder() {
 					</div>
 				</div>
 			</header>
+
+			{/* Quick Access Dashboard Cards */}
+			<div className="border-b border-border bg-gray-50">
+				<div className="container mx-auto px-4 py-6">
+					<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+						{/* DJ Dashboard Card */}
+						<Card
+							className="cursor-pointer hover:shadow-lg transition-all duration-300 hover:scale-105 bg-white"
+							onClick={() =>
+								window.open(
+									`/stage-manager/events/${eventId}/dj`,
+									"_blank"
+								)
+							}
+						>
+							<CardHeader>
+								<div className="flex items-center">
+									<Music className="h-6 w-6 text-green-600 mr-3" />
+									<CardTitle className="text-lg text-gray-900">
+										DJ Dashboard
+									</CardTitle>
+								</div>
+								<CardDescription className="text-gray-600">
+									Access music tracks and performance order
+								</CardDescription>
+							</CardHeader>
+							<CardContent>
+								<Button className="w-full bg-green-600 hover:bg-green-700 text-white">
+									<Music className="h-4 w-4 mr-2" />
+									Open DJ Dashboard
+								</Button>
+							</CardContent>
+						</Card>
+
+						{/* MC Dashboard Card */}
+						<Card
+							className="cursor-pointer hover:shadow-lg transition-all duration-300 hover:scale-105 bg-white"
+							onClick={() =>
+								window.open(
+									`/stage-manager/events/${eventId}/mc`,
+									"_blank"
+								)
+							}
+						>
+							<CardHeader>
+								<div className="flex items-center">
+									<Mic className="h-6 w-6 text-yellow-600 mr-3" />
+									<CardTitle className="text-lg text-gray-900">
+										MC Dashboard
+									</CardTitle>
+								</div>
+								<CardDescription className="text-gray-600">
+									View artist info and announcements
+								</CardDescription>
+							</CardHeader>
+							<CardContent>
+								<Button className="w-full bg-yellow-600 hover:bg-yellow-700 text-white">
+									<Mic className="h-4 w-4 mr-2" />
+									Open MC Dashboard
+								</Button>
+							</CardContent>
+						</Card>
+
+						{/* Live Performance Board Card */}
+						<Card
+							className="cursor-pointer hover:shadow-lg transition-all duration-300 hover:scale-105 bg-white"
+							onClick={() =>
+								window.open(
+									`/stage-manager/events/${eventId}/live-board`,
+									"_blank"
+								)
+							}
+						>
+							<CardHeader>
+								<div className="flex items-center">
+									<ExternalLink className="h-6 w-6 text-red-600 mr-3" />
+									<CardTitle className="text-lg text-gray-900">
+										Live Performance Board
+									</CardTitle>
+								</div>
+								<CardDescription className="text-gray-600">
+									Real-time performance monitoring and
+									emergency management
+								</CardDescription>
+							</CardHeader>
+							<CardContent>
+								<Button className="w-full bg-red-600 hover:bg-red-700 text-white">
+									<ExternalLink className="h-4 w-4 mr-2" />
+									Open Live Board
+								</Button>
+							</CardContent>
+						</Card>
+					</div>
+				</div>
+			</div>
+
 			{/* Emergency Broadcasts */}
 			{emergencyBroadcasts.length > 0 && (
 				<div className="border-b border-border">
@@ -2208,15 +2306,14 @@ export default function PerformanceOrder() {
 																							Not
 																							Started
 																						</SelectItem>
+																						<SelectItem value="next_on_stage">
+																							Back
+																							Stage
+																						</SelectItem>
 																						<SelectItem value="next_on_deck">
 																							Next
 																							on
 																							Deck
-																						</SelectItem>
-																						<SelectItem value="next_on_stage">
-																							Next
-																							on
-																							Stage
 																						</SelectItem>
 																						<SelectItem value="currently_on_stage">
 																							Currently

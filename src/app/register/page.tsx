@@ -175,7 +175,7 @@ export default function RegisterPage() {
 					<div className="flex justify-center mb-6">
 						<FameLogo width={80} height={80} />
 					</div>
-					<Card className="bg-purple-800/50 border-purple-600">
+					<Card className="bg-purple-300/50 border-purple-600">
 						<CardContent className="p-8">
 							<div className="text-center space-y-4">
 								<CheckCircle className="h-16 w-16 text-green-400 mx-auto" />
@@ -255,7 +255,7 @@ export default function RegisterPage() {
 										onChange={handleInputChange}
 										placeholder="First name"
 										required
-										className="bg-gray-800 border-gray-700 text-white placeholder-gray-400 focus:border-purple-500 focus:ring-purple-500"
+										className="bg-gray-30000 border-gray-700 placeholder-white focus:border-purple-500 focus:ring-purple-500"
 									/>
 								</div>
 								<div className="space-y-2">
@@ -273,7 +273,7 @@ export default function RegisterPage() {
 										onChange={handleInputChange}
 										placeholder="Last name"
 										required
-										className="bg-gray-800 border-gray-700 text-white placeholder-gray-400 focus:border-purple-500 focus:ring-purple-500"
+										className="bg-gray-300 border-gray-700 placeholder-white focus:border-purple-500 focus:ring-purple-500"
 									/>
 								</div>
 							</div>
@@ -294,7 +294,7 @@ export default function RegisterPage() {
 									onChange={handleInputChange}
 									placeholder="Enter your email"
 									required
-									className="bg-gray-800 border-gray-700 text-white placeholder-gray-400 focus:border-purple-500 focus:ring-purple-500"
+									className="bg-gray-300 border-gray-700 placeholder-white focus:border-purple-500 focus:ring-purple-500"
 								/>
 							</div>
 
@@ -313,7 +313,7 @@ export default function RegisterPage() {
 									value={formData.phone}
 									onChange={handleInputChange}
 									placeholder="(Optional)"
-									className="bg-gray-800 border-gray-700 text-white placeholder-gray-400 focus:border-purple-500 focus:ring-purple-500"
+									className="bg-gray-300 border-gray-700 placeholder-white focus:border-purple-500 focus:ring-purple-500"
 								/>
 							</div>
 
@@ -336,7 +336,7 @@ export default function RegisterPage() {
 										onChange={handleInputChange}
 										placeholder="At least 8 characters"
 										required
-										className="bg-gray-800 border-gray-700 text-white placeholder-gray-400 focus:border-purple-500 focus:ring-purple-500 pr-10"
+										className="bg-gray-300 border-gray-700 placeholder-white focus:border-purple-500 focus:ring-purple-500 pr-10"
 									/>
 									<button
 										type="button"
@@ -374,7 +374,7 @@ export default function RegisterPage() {
 										onChange={handleInputChange}
 										placeholder="Confirm your password"
 										required
-										className="bg-gray-800 border-gray-700 text-white placeholder-gray-400 focus:border-purple-500 focus:ring-purple-500 pr-10"
+										className="bg-gray-300 border-gray-700 placeholder-white focus:border-purple-500 focus:ring-purple-500 pr-10"
 									/>
 									<button
 										type="button"
@@ -428,7 +428,7 @@ export default function RegisterPage() {
 				</Card>
 
 				{/* Footer */}
-				<div className="text-center text-gray-500 text-sm">
+				<div className="text-center text-gray-300 text-sm">
 					<p>(c) 2025 FAME System. All rights reserved.</p>
 				</div>
 			</div>

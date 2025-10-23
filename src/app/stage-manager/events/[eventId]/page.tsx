@@ -331,7 +331,7 @@ export default function EventManagementPage() {
 							</Card>
 						</motion.div>
 
-						{/* Stage Manager Dashboard */}
+						{/* Show Order Dashboard with nested dashboards */}
 						<motion.div
 							initial={{ opacity: 0, y: 20 }}
 							animate={{ opacity: 1, y: 0 }}
@@ -342,115 +342,20 @@ export default function EventManagementPage() {
 									<div className="flex items-center">
 										<Settings className="h-6 w-6 text-pink-600 mr-3" />
 										<CardTitle className="text-lg text-gray-900">
-											Stage Manager Dashboard
+											Show Order Dashboard
 										</CardTitle>
 									</div>
 									<CardDescription className="text-gray-600">
 										Set performance order and timing
 									</CardDescription>
 								</CardHeader>
-								<CardContent>
+								<CardContent className="space-y-3">
 									<Link
 										href={`/stage-manager/events/${eventId}/performance-order`}
 									>
 										<Button className="w-full bg-pink-600 hover:bg-pink-700 text-white">
 											<Settings className="h-4 w-4 mr-2" />
 											Manage Show Order
-										</Button>
-									</Link>
-								</CardContent>
-							</Card>
-						</motion.div>
-
-						{/* DJ Dashboard */}
-						<motion.div
-							initial={{ opacity: 0, y: 20 }}
-							animate={{ opacity: 1, y: 0 }}
-							transition={{ duration: 0.5, delay: 0.4 }}
-						>
-							<Card className="h-full hover:shadow-lg transition-all duration-300 hover:scale-105 bg-white">
-								<CardHeader>
-									<div className="flex items-center">
-										<Music className="h-6 w-6 text-green-600 mr-3" />
-										<CardTitle className="text-lg text-gray-900">
-											DJ Dashboard
-										</CardTitle>
-									</div>
-									<CardDescription className="text-gray-600">
-										Access music tracks and performance
-										order
-									</CardDescription>
-								</CardHeader>
-								<CardContent>
-									<Link
-										href={`/stage-manager/events/${eventId}/dj`}
-									>
-										<Button className="w-full bg-green-600 hover:bg-green-700 text-white">
-											<Music className="h-4 w-4 mr-2" />
-											Open DJ Dashboard
-										</Button>
-									</Link>
-								</CardContent>
-							</Card>
-						</motion.div>
-
-						{/* MC Dashboard */}
-						<motion.div
-							initial={{ opacity: 0, y: 20 }}
-							animate={{ opacity: 1, y: 0 }}
-							transition={{ duration: 0.5, delay: 0.5 }}
-						>
-							<Card className="h-full hover:shadow-lg transition-all duration-300 hover:scale-105 bg-white">
-								<CardHeader>
-									<div className="flex items-center">
-										<Users className="h-6 w-6 text-yellow-600 mr-3" />
-										<CardTitle className="text-lg text-gray-900">
-											MC Dashboard
-										</CardTitle>
-									</div>
-									<CardDescription className="text-gray-600">
-										View artist info and announcements
-									</CardDescription>
-								</CardHeader>
-								<CardContent>
-									<Link
-										href={`/stage-manager/events/${eventId}/mc`}
-									>
-										<Button className="w-full bg-yellow-600 hover:bg-yellow-700 text-white">
-											<Users className="h-4 w-4 mr-2" />
-											Open MC Dashboard
-										</Button>
-									</Link>
-								</CardContent>
-							</Card>
-						</motion.div>
-
-						{/* Live Performance Board */}
-						<motion.div
-							initial={{ opacity: 0, y: 20 }}
-							animate={{ opacity: 1, y: 0 }}
-							transition={{ duration: 0.5, delay: 0.6 }}
-						>
-							<Card className="h-full hover:shadow-lg transition-all duration-300 hover:scale-105 bg-white">
-								<CardHeader>
-									<div className="flex items-center">
-										<ExternalLink className="h-6 w-6 text-red-600 mr-3" />
-										<CardTitle className="text-lg text-gray-900">
-											Live Performance Board
-										</CardTitle>
-									</div>
-									<CardDescription className="text-gray-600">
-										Real-time performance monitoring and
-										emergency management
-									</CardDescription>
-								</CardHeader>
-								<CardContent>
-									<Link
-										href={`/stage-manager/events/${eventId}/live-board`}
-									>
-										<Button className="w-full bg-red-600 hover:bg-red-700 text-white">
-											<ExternalLink className="h-4 w-4 mr-2" />
-											Open Live Board
 										</Button>
 									</Link>
 								</CardContent>

@@ -164,7 +164,7 @@ export default function ForgotPasswordPage() {
 									}}
 									placeholder="Enter your email address"
 									required
-									className="bg-gray-800 border-gray-700 text-white placeholder-gray-400 focus:border-purple-500 focus:ring-purple-500"
+									className="bg-gray-800 border-gray-700 text-white placeholder-white focus:border-purple-500 focus:ring-purple-500"
 								/>
 							</div>
 

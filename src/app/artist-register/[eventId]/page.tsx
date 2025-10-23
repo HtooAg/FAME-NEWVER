@@ -9,7 +9,6 @@ import {
 	CardContent,
 	CardDescription,
 	CardHeader,
-	CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -31,12 +30,13 @@ import {
 	ArrowLeft,
 	Upload,
 	Music,
-	Image,
+	Image as ImageIcon,
 	User,
 	Lightbulb,
 	FileText,
 	CheckCircle,
 	Plus,
+	Copy,
 } from "lucide-react";
 import { StagePositionPreview } from "@/components/StagePositionPreview";
 import {
@@ -48,6 +48,8 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { validateMediaFile } from "@/lib/media-validation";
+import { FameLogo } from "@/components/ui/fame-logo";
+import Image from "next/image";
 import { AudioPlayer } from "@/components/ui/audio-player";
 import { VideoPlayer, ImageViewer } from "@/components/ui/video-player";
 
@@ -161,6 +163,19 @@ function ArtistRegistrationForm() {
 	const [registeredArtistId, setRegisteredArtistId] = useState<string | null>(
 		null
 	);
+
+	// Upload progress states for music
+	const [uploadingFiles, setUploadingFiles] = useState<{
+		[key: number]: boolean;
+	}>({});
+	const [uploadProgress, setUploadProgress] = useState<{
+		[key: number]: number;
+	}>({});
+
+	// Upload progress states for gallery
+	const [uploadingGallery, setUploadingGallery] = useState(false);
+	const [galleryUploadProgress, setGalleryUploadProgress] = useState(0);
+	const [galleryUploadingCount, setGalleryUploadingCount] = useState(0);
 
 	useEffect(() => {
 		if (eventId) {
@@ -309,8 +324,38 @@ function ArtistRegistrationForm() {
 		const files = e.target.files;
 		if (!files) return;
 
+		// Detect audio duration automatically
+		const detectDuration = (file: File): Promise<number> => {
+			return new Promise((resolve) => {
+				const audio = new Audio();
+				const url = URL.createObjectURL(file);
+				audio.addEventListener("loadedmetadata", () => {
+					const durationInSeconds = Math.round(audio.duration);
+					URL.revokeObjectURL(url);
+					resolve(durationInSeconds);
+				});
+				audio.addEventListener("error", () => {
+					URL.revokeObjectURL(url);
+					resolve(0); // Default to 0 if detection fails
+				});
+				audio.src = url;
+			});
+		};
+
+		// Process multiple files
 		for (let i = 0; i < files.length; i++) {
 			const file = files[i];
+
+			// Find first empty track or create new one
+			let trackIndex = musicTracks.findIndex(
+				(track) => !track.file_url && !track.song_title
+			);
+
+			// If no empty track found, create a new one
+			if (trackIndex === -1) {
+				trackIndex = musicTracks.length;
+				addMusicTrack();
+			}
 
 			// Validate file before upload
 			const validation = validateMediaFile(
@@ -331,31 +376,16 @@ function ArtistRegistrationForm() {
 				continue;
 			}
 
-			// Get corresponding track for this file
-			const trackIndex = Math.min(i, musicTracks.length - 1);
-			const track = musicTracks[trackIndex];
-
-			// Detect audio duration automatically
-			const detectDuration = (file: File): Promise<number> => {
-				return new Promise((resolve) => {
-					const audio = new Audio();
-					const url = URL.createObjectURL(file);
-					audio.addEventListener("loadedmetadata", () => {
-						const durationInSeconds = Math.round(audio.duration);
-						URL.revokeObjectURL(url);
-						resolve(durationInSeconds);
-					});
-					audio.addEventListener("error", () => {
-						URL.revokeObjectURL(url);
-						resolve(0); // Default to 0 if detection fails
-					});
-					audio.src = url;
-				});
-			};
+			// Set uploading state
+			setUploadingFiles((prev) => ({ ...prev, [trackIndex]: true }));
+			setUploadProgress((prev) => ({ ...prev, [trackIndex]: 0 }));
 
 			try {
 				// Detect duration before upload
+				setUploadProgress((prev) => ({ ...prev, [trackIndex]: 20 }));
 				const duration = await detectDuration(file);
+
+				setUploadProgress((prev) => ({ ...prev, [trackIndex]: 40 }));
 
 				// Upload to Google Cloud Storage
 				const uploadFormData = new FormData();
@@ -375,6 +405,8 @@ function ArtistRegistrationForm() {
 				);
 				uploadFormData.append("fileType", "music");
 
+				setUploadProgress((prev) => ({ ...prev, [trackIndex]: 60 }));
+
 				const uploadResponse = await fetch("/api/gcs/upload", {
 					method: "POST",
 					body: uploadFormData,
@@ -393,21 +425,29 @@ function ArtistRegistrationForm() {
 				const uploadResult = await uploadResponse.json();
 				console.log("Music upload result:", uploadResult);
 
-				setMusicTracks((prev) =>
-					prev.map((track, index) =>
-						index === trackIndex
-							? {
-									...track,
-									file_url: uploadResult.url,
-									file_path: uploadResult.fileName,
-									duration: duration,
-									uploadedAt: new Date().toISOString(),
-									fileSize: file.size,
-									contentType: file.type,
-							  }
-							: track
-					)
-				);
+				setUploadProgress((prev) => ({ ...prev, [trackIndex]: 100 }));
+
+				// Update track with file info
+				setTimeout(() => {
+					setMusicTracks((prev) =>
+						prev.map((track, index) =>
+							index === trackIndex
+								? {
+										...track,
+										song_title:
+											track.song_title ||
+											file.name.replace(/\.[^/.]+$/, ""),
+										file_url: uploadResult.url,
+										file_path: uploadResult.fileName,
+										duration: duration,
+										uploadedAt: new Date().toISOString(),
+										fileSize: file.size,
+										contentType: file.type,
+								  }
+								: track
+						)
+					);
+				}, 100);
 
 				const minutes = Math.floor(duration / 60);
 				const seconds = duration % 60;
@@ -428,8 +468,19 @@ function ArtistRegistrationForm() {
 					}`,
 					variant: "destructive",
 				});
+			} finally {
+				// Clear uploading state after a short delay
+				setTimeout(() => {
+					setUploadingFiles((prev) => ({
+						...prev,
+						[trackIndex]: false,
+					}));
+				}, 500);
 			}
 		}
+
+		// Reset file input
+		e.target.value = "";
 	};
 
 	const handleDeleteMusic = async (index: number) => {
@@ -464,6 +515,11 @@ function ArtistRegistrationForm() {
 		const files = e.target.files;
 		if (!files) return;
 
+		// Set uploading state
+		setUploadingGallery(true);
+		setGalleryUploadingCount(files.length);
+		setGalleryUploadProgress(0);
+
 		for (let i = 0; i < files.length; i++) {
 			const file = files[i];
 
@@ -490,6 +546,10 @@ function ArtistRegistrationForm() {
 			}
 
 			try {
+				// Update progress
+				setGalleryUploadProgress(
+					Math.round(((i + 0.3) / files.length) * 100)
+				);
 				// Upload to Google Cloud Storage
 				const formData = new FormData();
 				formData.append("file", file);
@@ -547,6 +607,11 @@ function ArtistRegistrationForm() {
 					},
 				]);
 
+				// Update progress to show completion for this file
+				setGalleryUploadProgress(
+					Math.round(((i + 1) / files.length) * 100)
+				);
+
 				toast({
 					title: "Upload successful",
 					description: `${file.name} uploaded successfully`,
@@ -562,6 +627,16 @@ function ArtistRegistrationForm() {
 				});
 			}
 		}
+
+		// Clear uploading state after all files are processed
+		setTimeout(() => {
+			setUploadingGallery(false);
+			setGalleryUploadProgress(0);
+			setGalleryUploadingCount(0);
+		}, 500);
+
+		// Reset file input
+		e.target.value = "";
 	};
 
 	const handleDeleteGalleryFile = async (index: number) => {
@@ -784,51 +859,164 @@ function ArtistRegistrationForm() {
 		);
 	}
 	return (
-		<div className="min-h-screen bg-background">
-			<header className="border-b border-border">
-				<div className="container mx-auto px-4 py-4">
-					<div className="flex items-center gap-4">
-						{/* <Button
-							variant="outline"
-							size="sm"
-							onClick={() => router.back()}
-							className="flex items-center gap-2"
-						>
-							<ArrowLeft className="h-4 w-4" />
-							Back to Home
-						</Button> */}
-						<div>
-							<h1 className="text-2xl font-bold text-foreground">
-								{existingProfile
-									? "Edit Artist Profile"
-									: "Artist Registration"}
-							</h1>
-							<p className="text-muted-foreground">
-								{event.name}
-							</p>
+		<div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50">
+			{/* Enhanced Header with Logo and Animations */}
+			<header className="relative bg-gradient-to-r from-purple-600 via-pink-600 to-purple-700 text-white shadow-2xl overflow-hidden d-flex items-center justify-center">
+				{/* Animated background elements */}
+				<div className="absolute inset-0 opacity-20">
+					<div className="absolute top-0 left-0 w-64 h-64 bg-white rounded-full blur-3xl animate-pulse"></div>
+					<div
+						className="absolute bottom-0 right-0 w-96 h-96 bg-pink-300 rounded-full blur-3xl animate-pulse"
+						style={{ animationDelay: "1s" }}
+					></div>
+				</div>
+
+				<div className="container mx-auto px-4 py-8 relative z-10">
+					<div className="flex items-center justify-center">
+						<div className="flex gap-6 animate-fade-in-up items-center justify-center">
+							<div className="relative">
+								<div className="absolute inset-0 bg-white/20 rounded-3xl blur-xl animate-pulse"></div>
+								<div className="relative bg-white/10 backdrop-blur-sm rounded-3xl p-3 border border-white/20 shadow-2xl">
+									<Image
+										src="/fame-logo.png"
+										alt="FAME Logo"
+										width={70}
+										height={70}
+										className="object-contain drop-shadow-2xl"
+									/>
+								</div>
+							</div>
+							<div>
+								<h1 className="text-4xl font-bold drop-shadow-3xl mb-1">
+									{existingProfile
+										? "Edit Artist Profile"
+										: "Artist Registration"}
+								</h1>
+								<p className="text-purple-100 text-xl font-medium text-center">
+									{event.name}
+								</p>
+							</div>
 						</div>
 					</div>
 				</div>
 			</header>
 
-			<main className="container mx-auto px-4 py-8 max-w-4xl">
-				<form onSubmit={handleSubmit} className="space-y-8">
+			{/* Hero Welcome Section with Alert */}
+			<div className="relative bg-gradient-to-b from-white to-purple-50/30">
+				<div className="container mx-auto px-4 py-10 max-w-5xl">
+					{/* Main Welcome Card */}
+					<div className="bg-white rounded-3xl shadow-2xl border-l-4 	 overflow-hidden mb-8 border-pink-500">
+						<div className="bg-gradient-to-r  p-1">
+							<div className="bg-white rounded-t-3xl p-8">
+								<div className="text-center space-y-4">
+									<div className="inline-block">
+										<div className="bg-gradient-to-r from-purple-100 to-pink-100 rounded-full p-4 mb-4">
+											<Music className="h-12 w-12 text-purple-600" />
+										</div>
+									</div>
+									<h2 className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+										Welcome to {event.name}! 🎉
+									</h2>
+									<p className="text-gray-600 text-lg max-w-2xl mx-auto leading-relaxed">
+										We're thrilled to have you join us!
+										Complete the registration form below to
+										showcase your talent. Your information
+										helps us create an unforgettable
+										experience for you and our audience.
+									</p>
+								</div>
+							</div>
+						</div>
+					</div>
+
+					{/* Important Alert */}
+					<div className="bg-gradient-to-r from-blue-50 to-cyan-50 border-l-4 border-blue-500 rounded-xl p-6 shadow-lg mb-8 animate-fade-in-up">
+						<div className="flex items-start gap-4">
+							<div className="bg-blue-500 rounded-full p-2 mt-1">
+								<svg
+									className="h-6 w-6 text-white"
+									fill="none"
+									viewBox="0 0 24 24"
+									stroke="currentColor"
+								>
+									<path
+										strokeLinecap="round"
+										strokeLinejoin="round"
+										strokeWidth={2}
+										d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+									/>
+								</svg>
+							</div>
+							<div className="flex-1">
+								<h3 className="text-lg font-bold text-blue-900 mb-2">
+									📋 Important Information
+								</h3>
+								<p className="text-blue-800 mb-3">
+									Please ensure all information is accurate.
+									You'll receive your unique Artist ID after
+									registration, which you'll need to access
+									your dashboard.
+								</p>
+								<div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
+									<div className="bg-white rounded-lg p-3 shadow-sm border border-blue-100">
+										<div className="flex items-center gap-2">
+											<CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0" />
+											<span className="text-sm font-medium text-gray-700">
+												Complete all sections
+											</span>
+										</div>
+									</div>
+									<div className="bg-white rounded-lg p-3 shadow-sm border border-purple-100">
+										<div className="flex items-center gap-2">
+											<Music className="h-5 w-5 text-purple-600 flex-shrink-0" />
+											<span className="text-sm font-medium text-gray-700">
+												Upload music tracks
+											</span>
+										</div>
+									</div>
+									<div className="bg-white rounded-lg p-3 shadow-sm border border-yellow-100">
+										<div className="flex items-center gap-2">
+											<Lightbulb className="h-5 w-5 text-yellow-600 flex-shrink-0" />
+											<span className="text-sm font-medium text-gray-700">
+												Technical requirements
+											</span>
+										</div>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<main className="container mx-auto px-4 pb-12 max-w-5xl">
+				<form onSubmit={handleSubmit} className="space-y-6">
 					<Accordion
 						type="single"
 						defaultValue="basic-info"
 						collapsible
-						className="w-full"
+						className="w-full space-y-4"
 					>
 						{/* 1. Basic Information */}
-						<AccordionItem value="basic-info">
-							<AccordionTrigger className="text-lg font-semibold">
-								<div className="flex items-center gap-2">
-									<User className="h-5 w-5" />
-									Basic Information
+						<AccordionItem
+							value="basic-info"
+							className="bg-white rounded-2xl shadow-lg border-2 border-purple-100 overflow-hidden hover:shadow-xl transition-all duration-300"
+						>
+							<AccordionTrigger className="text-lg font-semibold px-6 py-5 hover:bg-purple-50 transition-colors">
+								<div className="flex items-center gap-3">
+									<div className="bg-purple-100 rounded-full p-2">
+										<User className="h-5 w-5 text-purple-600" />
+									</div>
+									<span className="text-gray-900">
+										Basic Information
+									</span>
+									<span className="ml-2 text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full">
+										Required
+									</span>
 								</div>
 							</AccordionTrigger>
-							<AccordionContent>
-								<Card>
+							<AccordionContent className="px-6 pb-6">
+								<Card className="border-0 shadow-none">
 									<CardContent className="space-y-4 pt-6">
 										<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 											<div className="space-y-2">
@@ -983,15 +1171,25 @@ function ArtistRegistrationForm() {
 						</AccordionItem>
 
 						{/* 2. Music Information */}
-						<AccordionItem value="music-info">
-							<AccordionTrigger className="text-lg font-semibold">
-								<div className="flex items-center gap-2">
-									<Music className="h-5 w-5" />
-									Music Information
+						<AccordionItem
+							value="music-info"
+							className="bg-white rounded-2xl shadow-lg border-2 border-pink-100 overflow-hidden hover:shadow-xl transition-all duration-300"
+						>
+							<AccordionTrigger className="text-lg font-semibold px-6 py-5 hover:bg-pink-50 transition-colors">
+								<div className="flex items-center gap-3">
+									<div className="bg-pink-100 rounded-full p-2">
+										<Music className="h-5 w-5 text-pink-600" />
+									</div>
+									<span className="text-gray-900">
+										Music Information
+									</span>
+									<span className="ml-2 text-xs bg-pink-100 text-pink-700 px-2 py-1 rounded-full">
+										Required
+									</span>
 								</div>
 							</AccordionTrigger>
-							<AccordionContent>
-								<Card>
+							<AccordionContent className="px-6 pb-6">
+								<Card className="border-0 shadow-none">
 									<CardContent className="space-y-4 pt-6">
 										<div className="space-y-4">
 											<div>
@@ -1184,86 +1382,137 @@ function ArtistRegistrationForm() {
 																	backup
 																</Label>
 															</div>
-															{track.file_url && (
-																<div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-3">
-																	<div className="flex justify-between items-center mb-2">
-																		<p className="text-green-800 dark:text-green-200 text-sm">
-																			✓ "
-																			{
-																				track.song_title
-																			}
-																			" by{" "}
-																			{
-																				artistData.artist_name
-																			}
-																		</p>
-																		<Button
-																			type="button"
-																			variant="destructive"
-																			size="sm"
-																			onClick={() =>
-																				handleDeleteMusic(
+
+															{/* Loading state while uploading */}
+															{uploadingFiles[
+																index
+															] && (
+																<div className="bg-blue-100 border-2 border-blue-400 rounded-lg p-4 shadow-md">
+																	<div className="flex items-center gap-3">
+																		<div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-700"></div>
+																		<div className="flex-1">
+																			<p className="text-sm font-semibold text-blue-900">
+																				Uploading{" "}
+																				{track.song_title ||
+																					"music file"}
+																				...
+																			</p>
+																			<div className="mt-2 w-full bg-blue-300 rounded-full h-2.5">
+																				<div
+																					className="bg-blue-700 h-2.5 rounded-full transition-all duration-300"
+																					style={{
+																						width: `${
+																							uploadProgress[
+																								index
+																							] ||
+																							0
+																						}%`,
+																					}}
+																				></div>
+																			</div>
+																			<p className="text-xs font-semibold text-blue-800 mt-1">
+																				{uploadProgress[
 																					index
-																				)
-																			}
-																			className="h-6 px-2 text-xs"
-																		>
-																			Delete
-																		</Button>
+																				] ||
+																					0}
+
+																				%
+																				complete
+																			</p>
+																		</div>
 																	</div>
-																	<AudioPlayer
-																		track={{
-																			song_title:
-																				track.song_title ||
-																				"Unknown Track",
-																			duration:
-																				track.duration ||
-																				0,
-																			notes:
-																				track.notes ||
-																				"",
-																			is_main_track:
-																				track.is_main_track ||
-																				false,
-																			tempo:
-																				track.tempo ||
-																				"medium",
-																			file_url:
-																				track.file_url,
-																			file_path:
-																				track.file_path,
-																		}}
-																		onError={(
-																			error
-																		) => {
-																			console.error(
-																				"Audio playback error:",
-																				error
-																			);
-																			toast(
-																				{
-																					title: "Audio Error",
-																					description:
-																						"Failed to play audio file. Please check the file format.",
-																					variant:
-																						"destructive",
-																				}
-																			);
-																		}}
-																	/>
 																</div>
 															)}
+
+															{/* Success state after upload */}
+															{track.file_url &&
+																!uploadingFiles[
+																	index
+																] && (
+																	<div className="bg-green-100 border-2 border-green-500 rounded-lg p-3 shadow-md">
+																		<div className="flex justify-between items-center mb-2">
+																			<div className="flex items-center gap-2">
+																				<CheckCircle className="h-5 w-5 text-green-700" />
+																				<p className="text-green-900 text-sm font-semibold">
+																					✓
+																					"
+																					{
+																						track.song_title
+																					}
+
+																					"
+																					uploaded
+																					successfully
+																				</p>
+																			</div>
+																			<Button
+																				type="button"
+																				variant="destructive"
+																				size="sm"
+																				onClick={() =>
+																					handleDeleteMusic(
+																						index
+																					)
+																				}
+																				className="h-6 px-2 text-xs"
+																			>
+																				Delete
+																			</Button>
+																		</div>
+																		<AudioPlayer
+																			track={{
+																				song_title:
+																					track.song_title ||
+																					"Unknown Track",
+																				duration:
+																					track.duration ||
+																					0,
+																				notes:
+																					track.notes ||
+																					"",
+																				is_main_track:
+																					track.is_main_track ||
+																					false,
+																				tempo:
+																					track.tempo ||
+																					"medium",
+																				file_url:
+																					track.file_url,
+																				file_path:
+																					track.file_path,
+																			}}
+																			onError={(
+																				error
+																			) => {
+																				console.error(
+																					"Audio playback error:",
+																					error
+																				);
+																				toast(
+																					{
+																						title: "Audio Error",
+																						description:
+																							"Failed to play audio file. Please check the file format.",
+																						variant:
+																							"destructive",
+																					}
+																				);
+																			}}
+																		/>
+																	</div>
+																)}
 														</div>
 													)
 												)}
 											</div>
 											<div className="space-y-4">
-												<div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6">
+												{/* Upload area - always visible */}
+												<div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6 hover:border-pink-300 hover:bg-pink-50/30 transition-all duration-300">
 													<div className="text-center space-y-2">
 														<Upload className="h-8 w-8 mx-auto text-muted-foreground" />
 														<Label
 															htmlFor="music-upload"
-															className="text-sm font-medium cursor-pointer"
+															className="text-sm font-medium cursor-pointer hover:text-pink-600 transition-colors"
 														>
 															Upload Music Files
 														</Label>
@@ -1304,15 +1553,25 @@ function ArtistRegistrationForm() {
 						</AccordionItem>
 
 						{/* 3. Technical Show Director Information */}
-						<AccordionItem value="technical-info">
-							<AccordionTrigger className="text-lg font-semibold">
-								<div className="flex items-center gap-2">
-									<Lightbulb className="h-5 w-5" />
-									Technical Show Director Information
+						<AccordionItem
+							value="technical-info"
+							className="bg-white rounded-2xl shadow-lg border-2 border-yellow-100 overflow-hidden hover:shadow-xl transition-all duration-300"
+						>
+							<AccordionTrigger className="text-lg font-semibold px-6 py-5 hover:bg-yellow-50 transition-colors">
+								<div className="flex items-center gap-3">
+									<div className="bg-yellow-100 rounded-full p-2">
+										<Lightbulb className="h-5 w-5 text-yellow-600" />
+									</div>
+									<span className="text-gray-900">
+										Technical Show Director Information
+									</span>
+									<span className="ml-2 text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full">
+										Required
+									</span>
 								</div>
 							</AccordionTrigger>
-							<AccordionContent>
-								<Card>
+							<AccordionContent className="px-6 pb-6">
+								<Card className="border-0 shadow-none">
 									<CardContent className="space-y-6 pt-6">
 										<div className="space-y-4">
 											<div className="space-y-2">
@@ -1929,15 +2188,25 @@ function ArtistRegistrationForm() {
 							</AccordionContent>
 						</AccordionItem>
 						{/* 4. Stage Visual Manager Information */}
-						<AccordionItem value="visual-info">
-							<AccordionTrigger className="text-lg font-semibold">
-								<div className="flex items-center gap-2">
-									<Image className="h-5 w-5" />
-									Stage Visual Manager Information
+						<AccordionItem
+							value="visual-info"
+							className="bg-white rounded-2xl shadow-lg border-2 border-blue-100 overflow-hidden hover:shadow-xl transition-all duration-300"
+						>
+							<AccordionTrigger className="text-lg font-semibold px-6 py-5 hover:bg-blue-50 transition-colors">
+								<div className="flex items-center gap-3">
+									<div className="bg-blue-100 rounded-full p-2">
+										<ImageIcon className="h-5 w-5 text-blue-600" />
+									</div>
+									<span className="text-gray-900">
+										Stage Visual Manager Information
+									</span>
+									<span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
+										Optional
+									</span>
 								</div>
 							</AccordionTrigger>
-							<AccordionContent>
-								<Card>
+							<AccordionContent className="px-6 pb-6">
+								<Card className="border-0 shadow-none">
 									<CardContent className="space-y-6 pt-6">
 										{/* Performance Video Link */}
 										<div className="space-y-2">
@@ -2066,33 +2335,81 @@ function ArtistRegistrationForm() {
 											<h3 className="text-lg font-semibold">
 												Image & Video Gallery
 											</h3>
-											{/* Upload Area */}
-											<div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6">
-												<div className="text-center space-y-2">
-													<Upload className="h-8 w-8 mx-auto text-muted-foreground" />
-													<Label
-														htmlFor="gallery-upload"
-														className="text-sm font-medium cursor-pointer"
-													>
-														Upload Images & Videos
-													</Label>
-													<Input
-														id="gallery-upload"
-														type="file"
-														multiple
-														accept="image/*,video/*"
-														onChange={
-															handleGalleryUpload
-														}
-														className="hidden"
-													/>
-													<p className="text-xs text-muted-foreground">
-														Upload photos and videos
-														of your performance (Max
-														50MB each)
-													</p>
+
+											{/* Loading State */}
+											{uploadingGallery && (
+												<div className="bg-gradient-to-r from-blue-50 to-purple-50 border-2 border-blue-200 rounded-xl p-6">
+													<div className="flex items-center gap-4">
+														<div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div>
+														<div className="flex-1">
+															<p className="text-base font-semibold text-blue-900 mb-2">
+																Uploading{" "}
+																{
+																	galleryUploadingCount
+																}{" "}
+																{galleryUploadingCount ===
+																1
+																	? "file"
+																	: "files"}
+																...
+															</p>
+															<div className="w-full bg-blue-200 rounded-full h-3 overflow-hidden">
+																<div
+																	className="bg-gradient-to-r from-blue-600 to-purple-600 h-3 rounded-full transition-all duration-300 flex items-center justify-center"
+																	style={{
+																		width: `${galleryUploadProgress}%`,
+																	}}
+																>
+																	<span className="text-xs text-white font-bold">
+																		{
+																			galleryUploadProgress
+																		}
+																		%
+																	</span>
+																</div>
+															</div>
+															<p className="text-sm text-blue-700 mt-2">
+																Please wait
+																while we upload
+																your media
+																files...
+															</p>
+														</div>
+													</div>
 												</div>
-											</div>
+											)}
+
+											{/* Upload Area - Hidden during upload */}
+											{!uploadingGallery && (
+												<div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6 hover:border-purple-300 hover:bg-purple-50/30 transition-all duration-300">
+													<div className="text-center space-y-2">
+														<Upload className="h-8 w-8 mx-auto text-muted-foreground" />
+														<Label
+															htmlFor="gallery-upload"
+															className="text-sm font-medium cursor-pointer hover:text-purple-600 transition-colors"
+														>
+															Upload Images &
+															Videos
+														</Label>
+														<Input
+															id="gallery-upload"
+															type="file"
+															multiple
+															accept="image/*,video/*"
+															onChange={
+																handleGalleryUpload
+															}
+															className="hidden"
+														/>
+														<p className="text-xs text-muted-foreground">
+															Upload photos and
+															videos of your
+															performance (Max
+															50MB each)
+														</p>
+													</div>
+												</div>
+											)}
 											{/* Gallery Preview */}
 											{galleryFiles.length > 0 && (
 												<div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -2201,15 +2518,25 @@ function ArtistRegistrationForm() {
 							</AccordionContent>
 						</AccordionItem>
 						{/* 5. Additional Information */}
-						<AccordionItem value="additional-info">
-							<AccordionTrigger className="text-lg font-semibold">
-								<div className="flex items-center gap-2">
-									<FileText className="h-5 w-5" />
-									Additional Information
+						<AccordionItem
+							value="additional-info"
+							className="bg-white rounded-2xl shadow-lg border-2 border-green-100 overflow-hidden hover:shadow-xl transition-all duration-300"
+						>
+							<AccordionTrigger className="text-lg font-semibold px-6 py-5 hover:bg-green-50 transition-colors">
+								<div className="flex items-center gap-3">
+									<div className="bg-green-100 rounded-full p-2">
+										<FileText className="h-5 w-5 text-green-600" />
+									</div>
+									<span className="text-gray-900">
+										Additional Information
+									</span>
+									<span className="ml-2 text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">
+										Optional
+									</span>
 								</div>
 							</AccordionTrigger>
-							<AccordionContent>
-								<Card>
+							<AccordionContent className="px-6 pb-6">
+								<Card className="border-0 shadow-none">
 									<CardContent className="space-y-4 pt-6">
 										<div className="space-y-2">
 											<Label htmlFor="mc_notes">
@@ -2270,16 +2597,43 @@ function ArtistRegistrationForm() {
 						</AccordionItem>
 					</Accordion>
 
-					<div className="flex gap-4">
-						<Button
-							type="submit"
-							disabled={submitting}
-							className="flex-1 text-white hover:text-white active:text-white focus:text-white"
-						>
-							{submitting
-								? "Registering..."
-								: "Register for Event"}
-						</Button>
+					{/* Enhanced Submit Button */}
+					<div className="bg-white rounded-2xl shadow-lg p-6 border-2 border-purple-100">
+						<div className="space-y-4">
+							<div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl p-4 border border-purple-200">
+								<div className="flex items-start gap-3">
+									<CheckCircle className="h-6 w-6 text-green-600 flex-shrink-0 mt-0.5" />
+									<div>
+										<h3 className="font-semibold text-gray-900 mb-1">
+											Ready to Submit?
+										</h3>
+										<p className="text-sm text-gray-600">
+											Please review all your information
+											before submitting. You'll receive
+											your Artist ID immediately after
+											registration.
+										</p>
+									</div>
+								</div>
+							</div>
+							<Button
+								type="submit"
+								disabled={submitting}
+								className="w-full h-14 text-lg font-semibold bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-300 disabled:opacity-50llowed"
+							>
+								{submitting ? (
+									<div className="flex items-center gap-3">
+										<div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+										<span>Registering Your Profile...</span>
+									</div>
+								) : (
+									<div className="flex items-center gap-2">
+										<CheckCircle className="h-5 w-5" />
+										<span>Complete Registration</span>
+									</div>
+								)}
+							</Button>
+						</div>
 					</div>
 				</form>
 			</main>
@@ -2288,102 +2642,99 @@ function ArtistRegistrationForm() {
 				open={showSuccessDialog}
 				onOpenChange={setShowSuccessDialog}
 			>
-				<DialogContent className="max-w-md mx-auto bg-white border-2 border-gray-200 shadow-xl">
-					<div className="text-center space-y-6 py-6 bg-white">
-						<div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-green-100">
-							<CheckCircle className="h-12 w-12 text-green-600" />
-						</div>
-
-						<div className="space-y-3">
-							<DialogTitle className="text-2xl font-bold text-gray-900 text-center">
-								Registration Successful!
-							</DialogTitle>
-							<DialogDescription className="text-lg text-center text-gray-700">
-								<span className="font-semibold text-gray-900">
-									{artistData.artist_name}
-								</span>{" "}
-								has been registered for{" "}
-								<span className="font-semibold text-gray-900">
-									{event?.name}
-								</span>
-							</DialogDescription>
-							{registeredArtistId && (
-								<div className="text-sm text-gray-600 bg-gray-100 rounded-lg p-3 text-center">
-									<span className="font-medium text-gray-800">
-										Artist ID:
-									</span>{" "}
-									<span className="text-gray-900">
-										{registeredArtistId}
-									</span>
-								</div>
-							)}
-							<div className="text-sm text-gray-600 bg-blue-50 border border-blue-200 rounded-lg p-3 text-center">
-								<p className="font-medium text-blue-800 mb-1">
-									Important Note:
-								</p>
-								<p className="text-blue-700">
-									Please save your Artist ID, Name, and Email.
-									You'll need these to log in to your artist
-									dashboard.
-								</p>
+				<DialogContent className="sm:max-w-md">
+					<DialogHeader>
+						<div className="flex justify-center mb-4">
+							<div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-green-100 animate-scale-in">
+								<CheckCircle className="h-10 w-10 text-green-600" />
 							</div>
 						</div>
+						<DialogTitle className="text-center text-2xl">
+							Registration Successful!
+						</DialogTitle>
+						<DialogDescription className="text-center">
+							Your artist profile has been created successfully
+							for{" "}
+							<span className="font-semibold">{event?.name}</span>
+						</DialogDescription>
+					</DialogHeader>
+					<div className="space-y-4">
+						{registeredArtistId && (
+							<div className="bg-gray-100 rounded-lg p-4">
+								<Label className="text-sm font-medium mb-2 block">
+									Your Artist ID
+								</Label>
+								<div className="flex items-center gap-2">
+									<Input
+										value={registeredArtistId}
+										readOnly
+										className="font-mono text-center bg-white"
+									/>
+									<Button
+										size="sm"
+										variant="outline"
+										onClick={async () => {
+											try {
+												await navigator.clipboard.writeText(
+													registeredArtistId
+												);
+												toast({
+													title: "Copied!",
+													description:
+														"Artist ID copied to clipboard",
+												});
+											} catch (error) {
+												console.error(
+													"Failed to copy:",
+													error
+												);
+											}
+										}}
+									>
+										<Copy className="h-4 w-4" />
+									</Button>
+								</div>
+								<p className="text-xs text-muted-foreground mt-2 text-center">
+									Save this ID to access your profile later
+								</p>
+							</div>
+						)}
+						<div className="bg-blue-50 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+							<p className="text-sm  dark:text-blue-500 font-medium mb-1">
+								📝 Important Note:
+							</p>
+							<p className="text-sm  dark:text-blue-500">
+								Please save your Artist ID, Name, and Email.
+								You'll need these to log in to your artist
+								dashboard.
+							</p>
+						</div>
+						<Button
+							className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white"
+							size="lg"
+							onClick={() => {
+								// Store login data in sessionStorage to pre-fill after splash
+								const artistId =
+									registeredArtistId ||
+									new URLSearchParams(
+										window.location.search
+									).get("artistId");
 
-						<div className="space-y-3">
-							<Button
-								onClick={async () => {
-									// Copy artist ID to clipboard
-									const artistId =
-										registeredArtistId ||
-										new URLSearchParams(
-											window.location.search
-										).get("artistId");
-									if (artistId) {
-										try {
-											await navigator.clipboard.writeText(
-												artistId
-											);
-											toast({
-												title: "Artist ID Copied!",
-												description:
-													"Artist ID has been copied to clipboard",
-											});
-										} catch (error) {
-											console.error(
-												"Failed to copy artist ID:",
-												error
-											);
-										}
-									}
-								}}
-								variant="outline"
-								className="w-full"
-							>
-								Copy Artist ID
-							</Button>
-							<Button
-								onClick={() => {
-									// Redirect to artist login page with pre-filled data
-									const artistId =
-										registeredArtistId ||
-										new URLSearchParams(
-											window.location.search
-										).get("artistId");
-									const params = new URLSearchParams({
+								sessionStorage.setItem(
+									"artistLoginData",
+									JSON.stringify({
 										artistId: artistId || "",
 										artistName: artistData.artist_name,
 										email: artistData.email,
-									});
-									router.push(
-										`/artist-login?${params.toString()}`
-									);
-								}}
-								className="w-full py-3 text-lg font-semibold text-white bg-purple-600 hover:bg-purple-700 border-0"
-								size="lg"
-							>
-								Go to Login
-							</Button>
-						</div>
+									})
+								);
+
+								// Redirect to splash screen first
+								router.push("/artist-splash");
+							}}
+						>
+							Go to Login
+						</Button>
 					</div>
 				</DialogContent>
 			</Dialog>

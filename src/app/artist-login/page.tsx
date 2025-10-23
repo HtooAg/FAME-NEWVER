@@ -207,7 +207,7 @@ export default function ArtistLogin() {
 											artistId: e.target.value,
 										})
 									}
-									className="pl-10"
+									className="pl-10 placeholder-white"
 								/>
 							</div>
 						</div>
@@ -226,7 +226,7 @@ export default function ArtistLogin() {
 											email: e.target.value,
 										})
 									}
-									className="pl-10"
+									className="pl-10 placeholder-white"
 									required
 								/>
 							</div>
@@ -247,7 +247,7 @@ export default function ArtistLogin() {
 											artistName: e.target.value,
 										})
 									}
-									className="pl-10"
+									className="pl-10 placeholder-white"
 									required
 								/>
 							</div>

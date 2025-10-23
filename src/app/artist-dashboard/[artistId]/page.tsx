@@ -240,22 +240,44 @@ export default function ArtistDashboard() {
 	}
 
 	return (
-		<div className="min-h-screen bg-background">
-			<header className="border-b border-border">
-				<div className="container mx-auto px-4 py-4">
+		<div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50">
+			{/* Enhanced Header with Logo and Animations */}
+			<header className="relative bg-gradient-to-r from-purple-600 via-pink-600 to-purple-700 text-white shadow-2xl overflow-hidden">
+				{/* Animated background elements */}
+				<div className="absolute inset-0 opacity-20">
+					<div className="absolute top-0 left-0 w-64 h-64 bg-white rounded-full blur-3xl animate-pulse"></div>
+					<div
+						className="absolute bottom-0 right-0 w-96 h-96 bg-pink-300 rounded-full blur-3xl animate-pulse"
+						style={{ animationDelay: "1s" }}
+					></div>
+				</div>
+
+				<div className="container mx-auto px-4 py-8 relative z-10">
 					<div className="flex items-center justify-between">
-						<div>
-							<h1 className="text-2xl font-bold text-foreground">
-								Artist Dashboard
-							</h1>
-							<p className="text-muted-foreground">
-								Welcome back, {profile.artistName}
-							</p>
+						<div className="flex items-center gap-6 animate-fade-in-up">
+							<div className="relative">
+								<div className="absolute inset-0 bg-white/20 rounded-3xl blur-xl animate-pulse"></div>
+								<div className="relative bg-white/10 backdrop-blur-sm rounded-3xl p-3 border border-white/20 shadow-2xl">
+									<img
+										src="/fame-logo.png"
+										alt="FAME Logo"
+										className="h-16 w-16 object-contain drop-shadow-2xl"
+									/>
+								</div>
+							</div>
+							<div>
+								<h1 className="text-4xl font-bold drop-shadow-2xl mb-1">
+									Artist Dashboard
+								</h1>
+								<p className="text-purple-100 text-xl font-medium">
+									Welcome back, {profile.artistName}!
+								</p>
+							</div>
 						</div>
 						<div className="flex items-center gap-2">
 							<Button
-								variant="outline"
-								size="sm"
+								variant="ghost"
+								className="text-white hover:bg-white/20 h-10"
 								onClick={() =>
 									router.push(`/artist-edit/${profile.id}`)
 								}
@@ -264,8 +286,8 @@ export default function ArtistDashboard() {
 								Edit Profile
 							</Button>
 							<Button
-								variant="outline"
-								size="sm"
+								variant="ghost"
+								className="text-white hover:bg-white/20 h-10"
 								onClick={() => {
 									// Clear artist session
 									localStorage.removeItem("artistSession");
@@ -283,26 +305,55 @@ export default function ArtistDashboard() {
 
 			<main className="container mx-auto px-4 py-8 max-w-6xl">
 				<Tabs defaultValue="overview" className="w-full">
-					<TabsList className="grid w-full grid-cols-5">
-						<TabsTrigger value="overview">Overview</TabsTrigger>
-						<TabsTrigger value="music">Music</TabsTrigger>
-						<TabsTrigger value="technical">Technical</TabsTrigger>
-						<TabsTrigger value="gallery">Gallery</TabsTrigger>
-						<TabsTrigger value="event">Event Details</TabsTrigger>
+					<TabsList className="grid w-full grid-cols-5 bg-white rounded-xl shadow-lg  border-2 border-purple-100 mb-8">
+						<TabsTrigger
+							value="overview"
+							className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-500 data-[state=active]:to-pink-500 data-[state=active]:text-white rounded-lg transition-all duration-300"
+						>
+							Overview
+						</TabsTrigger>
+						<TabsTrigger
+							value="music"
+							className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-pink-500 data-[state=active]:to-rose-500 data-[state=active]:text-white rounded-lg transition-all duration-300"
+						>
+							Music
+						</TabsTrigger>
+						<TabsTrigger
+							value="technical"
+							className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-yellow-500 data-[state=active]:to-orange-500 data-[state=active]:text-white rounded-lg transition-all duration-300"
+						>
+							Technical
+						</TabsTrigger>
+						<TabsTrigger
+							value="gallery"
+							className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500 data-[state=active]:to-purple-500 data-[state=active]:text-white rounded-lg transition-all duration-300"
+						>
+							Gallery
+						</TabsTrigger>
+						<TabsTrigger
+							value="event"
+							className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-indigo-500 data-[state=active]:to-purple-500 data-[state=active]:text-white rounded-lg transition-all duration-300"
+						>
+							Event Details
+						</TabsTrigger>
 					</TabsList>
 
 					{/* Overview Tab */}
 					<TabsContent value="overview" className="space-y-6">
 						<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 							{/* Basic Information */}
-							<Card>
-								<CardHeader>
-									<CardTitle className="flex items-center gap-2">
-										<User className="h-5 w-5" />
-										Basic Information
+							<Card className="bg-white rounded-2xl shadow-lg border-2 border-purple-100 overflow-hidden hover:shadow-xl transition-all duration-300">
+								<CardHeader className="bg-gradient-to-r from-purple-50 to-pink-50 border-b border-purple-100 py-6">
+									<CardTitle className="flex items-center gap-3 text-lg">
+										<div className="bg-purple-100 rounded-full p-2">
+											<User className="h-5 w-5 text-purple-600" />
+										</div>
+										<span className="text-gray-900">
+											Basic Information
+										</span>
 									</CardTitle>
 								</CardHeader>
-								<CardContent className="space-y-4">
+								<CardContent className="space-y-4 pt-6">
 									<div>
 										<p className="text-sm text-muted-foreground">
 											Artist ID
@@ -368,11 +419,18 @@ export default function ArtistDashboard() {
 							</Card>
 
 							{/* Biography */}
-							<Card>
-								<CardHeader>
-									<CardTitle>Biography</CardTitle>
+							<Card className="bg-white rounded-2xl shadow-lg border-2 border-pink-100 overflow-hidden hover:shadow-xl transition-all duration-300">
+								<CardHeader className="bg-gradient-to-r from-pink-50 to-purple-50 border-b border-pink-100 py-6">
+									<CardTitle className="flex items-center gap-3 text-lg">
+										<div className="bg-pink-100 rounded-full p-2">
+											<User className="h-5 w-5 text-pink-600" />
+										</div>
+										<span className="text-gray-900">
+											Biography
+										</span>
+									</CardTitle>
 								</CardHeader>
-								<CardContent>
+								<CardContent className="pt-6">
 									<p className="text-sm leading-relaxed">
 										{profile.biography}
 									</p>
@@ -381,14 +439,18 @@ export default function ArtistDashboard() {
 						</div>
 
 						{/* Social Media Links */}
-						<Card>
-							<CardHeader>
-								<CardTitle className="flex items-center gap-2">
-									<Globe className="h-5 w-5" />
-									Social Media & Links
+						<Card className="bg-white rounded-2xl shadow-lg border-2 border-blue-100 overflow-hidden hover:shadow-xl transition-all duration-300">
+							<CardHeader className="bg-gradient-to-r from-blue-50 to-cyan-50 border-b border-blue-100 py-6">
+								<CardTitle className="flex items-center gap-3 text-lg">
+									<div className="bg-blue-100 rounded-full p-2">
+										<Globe className="h-5 w-5 text-blue-600" />
+									</div>
+									<span className="text-gray-900">
+										Social Media & Links
+									</span>
 								</CardTitle>
 							</CardHeader>
-							<CardContent>
+							<CardContent className="space-y-6 pt-6">
 								<div className="grid grid-cols-2 md:grid-cols-3 gap-4">
 									{profile.socialMedia?.instagram && (
 										<a
@@ -462,18 +524,22 @@ export default function ArtistDashboard() {
 
 					{/* Music Tab */}
 					<TabsContent value="music" className="space-y-6">
-						<Card>
-							<CardHeader>
-								<CardTitle className="flex items-center gap-2">
-									<Music className="h-5 w-5" />
-									Music Tracks
+						<Card className="bg-white rounded-2xl shadow-lg border-2 border-pink-100 overflow-hidden hover:shadow-xl transition-all duration-300">
+							<CardHeader className="bg-gradient-to-r from-pink-50 to-purple-50 border-b border-pink-100 py-6">
+								<CardTitle className="flex items-center gap-3 text-lg">
+									<div className="bg-pink-100 rounded-full p-2">
+										<Music className="h-5 w-5 text-pink-600" />
+									</div>
+									<span className="text-gray-900">
+										Music Tracks
+									</span>
 								</CardTitle>
-								<CardDescription>
+								<CardDescription className="mt-2">
 									Your uploaded music tracks for the
 									performance
 								</CardDescription>
 							</CardHeader>
-							<CardContent>
+							<CardContent className="pt-6">
 								<div className="space-y-4">
 									{profile.musicTracks &&
 									profile.musicTracks.length > 0 ? (
@@ -533,8 +599,7 @@ export default function ArtistDashboard() {
 																			);
 																		await downloadFile(
 																			track.file_url,
-																			track.song_title ||
-																				track.songTitle
+																			track.song_title
 																		);
 																	}}
 																	className="flex items-center gap-2"
@@ -562,14 +627,18 @@ export default function ArtistDashboard() {
 					<TabsContent value="technical" className="space-y-6">
 						<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 							{/* Costume & Lighting */}
-							<Card>
-								<CardHeader>
-									<CardTitle className="flex items-center gap-2">
-										<Palette className="h-5 w-5" />
-										Costume & Lighting
+							<Card className="bg-white rounded-2xl shadow-lg border-2 border-yellow-100 overflow-hidden hover:shadow-xl transition-all duration-300">
+								<CardHeader className="bg-gradient-to-r from-yellow-50 to-orange-50 border-b border-yellow-100 py-6">
+									<CardTitle className="flex items-center gap-3 text-lg">
+										<div className="bg-yellow-100 rounded-full p-2">
+											<Palette className="h-5 w-5 text-yellow-600" />
+										</div>
+										<span className="text-gray-900">
+											Costume & Lighting
+										</span>
 									</CardTitle>
 								</CardHeader>
-								<CardContent className="space-y-4">
+								<CardContent className="space-y-4 pt-6">
 									<div>
 										<p className="text-sm text-muted-foreground">
 											Costume Color
@@ -669,14 +738,18 @@ export default function ArtistDashboard() {
 							</Card>
 
 							{/* Stage Positioning */}
-							<Card>
-								<CardHeader>
-									<CardTitle className="flex items-center gap-2">
-										<Navigation className="h-5 w-5" />
-										Stage Positioning
+							<Card className="bg-white rounded-2xl shadow-lg border-2 border-blue-100 overflow-hidden hover:shadow-xl transition-all duration-300">
+								<CardHeader className="bg-gradient-to-r from-blue-50 to-cyan-50 border-b border-blue-100 py-6">
+									<CardTitle className="flex items-center gap-3 text-lg">
+										<div className="bg-blue-100 rounded-full p-2">
+											<Navigation className="h-5 w-5 text-blue-600" />
+										</div>
+										<span className="text-gray-900">
+											Stage Positioning
+										</span>
 									</CardTitle>
 								</CardHeader>
-								<CardContent className="space-y-4">
+								<CardContent className="space-y-4 pt-6">
 									<div>
 										<p className="text-sm text-muted-foreground">
 											Starting Position
@@ -715,22 +788,36 @@ export default function ArtistDashboard() {
 
 						{/* Notes */}
 						<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-							<Card>
-								<CardHeader>
-									<CardTitle>MC Notes</CardTitle>
+							<Card className="bg-white rounded-2xl shadow-lg border-2 border-green-100 overflow-hidden hover:shadow-xl transition-all duration-300">
+								<CardHeader className="bg-gradient-to-r from-green-50 to-emerald-50 border-b border-green-100 py-6">
+									<CardTitle className="flex items-center gap-3 text-lg">
+										<div className="bg-green-100 rounded-full p-2">
+											<Lightbulb className="h-5 w-5 text-green-600" />
+										</div>
+										<span className="text-gray-900">
+											MC Notes
+										</span>
+									</CardTitle>
 								</CardHeader>
-								<CardContent>
+								<CardContent className="pt-6">
 									<p className="text-sm">
 										{profile.mcNotes ||
 											"No special notes for MC"}
 									</p>
 								</CardContent>
 							</Card>
-							<Card>
-								<CardHeader>
-									<CardTitle>Stage Manager Notes</CardTitle>
+							<Card className="bg-white rounded-2xl shadow-lg border-2 border-teal-100 overflow-hidden hover:shadow-xl transition-all duration-300">
+								<CardHeader className="bg-gradient-to-r from-teal-50 to-cyan-50 border-b border-teal-100 py-6">
+									<CardTitle className="flex items-center gap-3 text-lg">
+										<div className="bg-teal-100 rounded-full p-2">
+											<User className="h-5 w-5 text-teal-600" />
+										</div>
+										<span className="text-gray-900">
+											Stage Manager Notes
+										</span>
+									</CardTitle>
 								</CardHeader>
-								<CardContent>
+								<CardContent className="pt-6">
 									<p className="text-sm">
 										{profile.stageManagerNotes ||
 											"No special notes for stage manager"}
@@ -742,17 +829,21 @@ export default function ArtistDashboard() {
 
 					{/* Gallery Tab */}
 					<TabsContent value="gallery" className="space-y-6">
-						<Card>
-							<CardHeader>
-								<CardTitle className="flex items-center gap-2">
-									<Image className="h-5 w-5" />
-									Media Gallery
+						<Card className="bg-white rounded-2xl shadow-lg border-2 border-purple-100 overflow-hidden hover:shadow-xl transition-all duration-300">
+							<CardHeader className="bg-gradient-to-r from-purple-50 to-pink-50 border-b border-purple-100 py-6">
+								<CardTitle className="flex items-center gap-3 text-lg">
+									<div className="bg-purple-100 rounded-full p-2">
+										<Image className="h-5 w-5 text-purple-600" />
+									</div>
+									<span className="text-gray-900">
+										Media Gallery
+									</span>
 								</CardTitle>
-								<CardDescription>
+								<CardDescription className="mt-2">
 									Your uploaded images and videos
 								</CardDescription>
 							</CardHeader>
-							<CardContent>
+							<CardContent className="pt-6">
 								{profile.galleryFiles &&
 								profile.galleryFiles.length > 0 ? (
 									<div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -829,14 +920,18 @@ export default function ArtistDashboard() {
 
 					{/* Event Details Tab */}
 					<TabsContent value="event" className="space-y-6">
-						<Card>
-							<CardHeader>
-								<CardTitle className="flex items-center gap-2">
-									<Calendar className="h-5 w-5" />
-									Event Information
+						<Card className="bg-white rounded-2xl shadow-lg border-2 border-indigo-100 overflow-hidden hover:shadow-xl transition-all duration-300">
+							<CardHeader className="bg-gradient-to-r from-indigo-50 to-purple-50 border-b border-indigo-100 py-6">
+								<CardTitle className="flex items-center gap-3 text-lg">
+									<div className="bg-indigo-100 rounded-full p-2">
+										<Calendar className="h-5 w-5 text-indigo-600" />
+									</div>
+									<span className="text-gray-900">
+										Event Information
+									</span>
 								</CardTitle>
 							</CardHeader>
-							<CardContent className="space-y-4">
+							<CardContent className="space-y-4 pt-6">
 								<div>
 									<p className="text-sm text-muted-foreground">
 										Event Name

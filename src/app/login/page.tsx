@@ -169,7 +169,7 @@ export default function LoginPage() {
 									onChange={handleInputChange}
 									placeholder="Enter your email"
 									required
-									className="bg-gray-800 border-gray-700 text-white placeholder-gray-400 focus:border-purple-500 focus:ring-purple-500"
+									className="bg-gray-300 border-gray-700placeholder-white focus:border-purple-500 focus:ring-purple-500"
 								/>
 							</div>
 
@@ -192,14 +192,14 @@ export default function LoginPage() {
 										onChange={handleInputChange}
 										placeholder="Enter your password"
 										required
-										className="bg-gray-800 border-gray-700 text-white placeholder-gray-400 focus:border-purple-500 focus:ring-purple-500 pr-10"
+										className="bg-gray-300 border-gray-700 placeholder-white focus:border-purple-500 focus:ring-purple-500 pr-10"
 									/>
 									<button
 										type="button"
 										onClick={() =>
 											setShowPassword(!showPassword)
 										}
-										className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-white"
+										className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-500"
 									>
 										{showPassword ? (
 											<EyeOff className="h-4 w-4" />
@@ -232,14 +232,6 @@ export default function LoginPage() {
 
 						{/* Links */}
 						<div className="mt-6 space-y-4">
-							<div className="text-center">
-								<Link
-									href="/forgot-password"
-									className="text-purple-400 hover:text-purple-300 text-sm"
-								>
-									Forgot your password?
-								</Link>
-							</div>
 							<div className="text-center text-gray-400">
 								Don't have an account?{" "}
 								<Link
@@ -254,7 +246,7 @@ export default function LoginPage() {
 				</Card>
 
 				{/* Footer */}
-				<div className="text-center text-gray-500 text-sm">
+				<div className="text-center text-gray-300 text-sm">
 					<p>(c) 2025 FAME System. All rights reserved.</p>
 				</div>
 			</div>
