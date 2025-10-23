@@ -346,12 +346,10 @@ function ArtistRegistrationForm() {
 		for (let i = 0; i < files.length; i++) {
 			const file = files[i];
 
-			// Find first empty track or create new one
-			let trackIndex = musicTracks.findIndex(
-				(track) => !track.file_url && !track.song_title
-			);
+			// Find first track without uploaded file (ignore song_title and notes)
+			let trackIndex = musicTracks.findIndex((track) => !track.file_url);
 
-			// If no empty track found, create a new one
+			// If no track without file found, create a new one
 			if (trackIndex === -1) {
 				trackIndex = musicTracks.length;
 				addMusicTrack();

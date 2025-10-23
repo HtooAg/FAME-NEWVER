@@ -400,12 +400,12 @@ export default function ArtistEditPage() {
 			for (let i = 0; i < filesArray.length; i++) {
 				const file = filesArray[i];
 
-				// Find first empty track or use next available index
+				// Find first track without uploaded file (ignore song_title and notes)
 				let trackIndex = musicTracks.findIndex(
-					(track) => !track.file_url && !track.song_title
+					(track) => !track.file_url
 				);
 
-				// If no empty track found, add to the end
+				// If no track without file found, add to the end
 				if (trackIndex === -1) {
 					trackIndex = musicTracks.length;
 					// Add empty track to the state
