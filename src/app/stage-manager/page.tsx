@@ -311,7 +311,7 @@ export default function StageManagerDashboard() {
 				>
 					<Card className="bg-gradient-to-r from-purple-600 to-pink-600 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-300">
 						<CardHeader>
-							<CardTitle className="text-2xl font-bold flex items-center">
+							<CardTitle className="text-2xl text-white font-bold flex items-center">
 								<Calendar className="h-6 w-6 mr-3" />
 								My Events
 							</CardTitle>

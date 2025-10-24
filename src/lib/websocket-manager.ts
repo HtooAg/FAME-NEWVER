@@ -37,14 +37,8 @@ export class WebSocketManager {
 		try {
 			await this.loadSocketIO();
 			this.setupWebSocket();
-			console.log(
-				`WebSocket-only mode initialized for ${this.role} - No polling`
-			);
 		} catch (error) {
 			console.error("Failed to initialize WebSocket:", error);
-			console.log(
-				`WebSocket connection failed for ${this.role} - No fallback polling`
-			);
 		}
 	}
 
@@ -71,7 +65,6 @@ export class WebSocketManager {
 			this.socket = io();
 
 			this.socket.on("connect", () => {
-				console.log(`WebSocket connected for ${this.role}`);
 				this.isConnected = true;
 				this.resetReconnectAttempts();
 
@@ -87,7 +80,6 @@ export class WebSocketManager {
 			});
 
 			this.socket.on("disconnect", (reason: string) => {
-				console.log(`WebSocket disconnected for ${this.role}:`, reason);
 				this.isConnected = false;
 				this.options.onDisconnect?.();
 
@@ -135,10 +127,6 @@ export class WebSocketManager {
 				30000
 			);
 
-			console.log(
-				`WebSocket reconnection attempt ${this.reconnectAttempts} in ${delay}ms`
-			);
-
 			setTimeout(() => {
 				if (!this.isConnected) {
 					this.setupWebSocket();
@@ -163,7 +151,6 @@ export class WebSocketManager {
 
 		// Artist-related events
 		this.socket.on("artist_registered", (data: any) => {
-			console.log("Artist registered:", data);
 			if (data.eventId === this.eventId) {
 				this.showToast(
 					"New Artist",
@@ -174,37 +161,14 @@ export class WebSocketManager {
 		});
 
 		this.socket.on("artist_assigned", (data: any) => {
-			console.log("Artist assigned:", data);
-			if (data.eventId === this.eventId) {
-				this.showToast(
-					"Artist Assigned",
-					`Artist assigned to performance date`
-				);
-				this.triggerDataUpdate();
-			}
+			// Silent update - no refresh needed, local state already updated
 		});
 
 		this.socket.on("artist_status_changed", (data: any) => {
-			console.log("Artist status changed:", data);
-			if (data.eventId === this.eventId) {
-				const statusMap: { [key: string]: string } = {
-					not_started: "Not Started",
-					currently_on_stage: "Currently On Stage",
-					next_on_stage: "Next On Stage",
-					next_on_deck: "Next On Deck",
-					completed: "Completed",
-				};
-				const statusText = statusMap[data.status] || data.status;
-				this.showToast(
-					"Status Updated",
-					`${data.artist_name || "Artist"} is now ${statusText}`
-				);
-				this.triggerDataUpdate();
-			}
+			// Silent update - no refresh needed, local state already updated
 		});
 
 		this.socket.on("artist_quality_rating_updated", (data: any) => {
-			console.log("Artist quality rating updated:", data);
 			if (data.eventId === this.eventId) {
 				const stars = "★".repeat(data.quality_rating || 0);
 				this.showToast(
@@ -218,7 +182,6 @@ export class WebSocketManager {
 		});
 
 		this.socket.on("artist_deleted", (data: any) => {
-			console.log("Artist deleted:", data);
 			if (data.eventId === this.eventId) {
 				this.showToast(
 					"Artist Removed",
@@ -230,7 +193,6 @@ export class WebSocketManager {
 
 		// Rehearsal events
 		this.socket.on("rehearsal_updated", (data: any) => {
-			console.log("Rehearsal updated:", data);
 			if (data.eventId === this.eventId) {
 				const actionMap: { [key: string]: string } = {
 					scheduled: "scheduled for rehearsal",
@@ -245,19 +207,11 @@ export class WebSocketManager {
 
 		// Performance order events
 		this.socket.on("performance-order-update", (data: any) => {
-			console.log("Performance order updated:", data);
-			if (data.eventId === this.eventId) {
-				this.showToast(
-					"Performance Order",
-					"Show order has been updated"
-				);
-				this.triggerDataUpdate();
-			}
+			// Silent update - no refresh needed, local state already updated
 		});
 
 		// Cue events
 		this.socket.on("cue_updated", (data: any) => {
-			console.log("Cue updated:", data);
 			if (data.eventId === this.eventId) {
 				const actionMap: { [key: string]: string } = {
 					created: "added",
@@ -273,7 +227,6 @@ export class WebSocketManager {
 
 		// Live board events
 		this.socket.on("live-board-update", (data: any) => {
-			console.log("Live board updated:", data);
 			if (data.eventId === this.eventId) {
 				this.showToast("Live Board", "Performance status updated");
 				this.triggerDataUpdate();
@@ -282,18 +235,27 @@ export class WebSocketManager {
 
 		// Emergency events
 		this.socket.on("emergency-alert", (data: any) => {
-			console.log("Emergency alert:", data);
 			this.showToast("EMERGENCY ALERT", data.message, "destructive");
 			this.triggerDataUpdate();
 		});
 
 		this.socket.on("emergency-clear", (data: any) => {
-			console.log("Emergency cleared:", data);
 			this.showToast(
 				"Emergency Cleared",
 				"Emergency alert has been deactivated"
 			);
 			this.triggerDataUpdate();
+		});
+
+		// Timing settings events
+		this.socket.on("timing-settings-updated", (data: any) => {
+			if (data.eventId === this.eventId) {
+				this.showToast(
+					"Timing Updated",
+					"Event timing settings have been updated"
+				);
+				this.triggerDataUpdate();
+			}
 		});
 	}
 
@@ -310,7 +272,6 @@ export class WebSocketManager {
 		}
 
 		this.debounceTimer = setTimeout(() => {
-			console.log(`Triggering data update for ${this.role}`);
 			this.options.onDataUpdate?.();
 			this.debounceTimer = null;
 		}, 50); // Reduced to 50ms for faster response
@@ -330,7 +291,7 @@ export class WebSocketManager {
 			});
 			window.dispatchEvent(toastEvent);
 		} catch (error) {
-			console.log(`${title}: ${description}`);
+			// Silent fail
 		}
 	}
 
@@ -338,9 +299,8 @@ export class WebSocketManager {
 	emit(event: string, data: any): void {
 		if (this.socket && this.isConnected) {
 			this.socket.emit(event, data);
-			console.log(`Emitted ${event}:`, data);
 		} else {
-			console.warn(`Cannot emit ${event}: WebSocket not connected`);
+			// WebSocket not connected
 		}
 	}
 
@@ -380,9 +340,6 @@ export class WebSocketManager {
 		}
 
 		this.isConnected = false;
-		console.log(
-			`WebSocket manager destroyed for ${this.role} - WebSocket-only mode`
-		);
 	}
 }
 

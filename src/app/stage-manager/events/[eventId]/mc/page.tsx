@@ -390,6 +390,8 @@ export default function MCDashboard() {
 								);
 								fetchPerformanceOrder();
 							}
+							// Refresh emergency broadcasts for real-time updates
+							fetchEmergencyBroadcasts();
 						}, 100);
 					},
 				});

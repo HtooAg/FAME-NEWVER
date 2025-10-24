@@ -163,11 +163,36 @@ export async function PATCH(
 		}
 
 		// Update only the provided fields
+		// Handle both snake_case and camelCase for consistency
 		const updatedArtist = {
 			...artists[artistIndex],
 			...updateData,
 			updatedAt: new Date().toISOString(),
 		};
+
+		// Ensure performance_order is also saved as performanceOrder for consistency
+		if (updateData.performance_order !== undefined) {
+			updatedArtist.performanceOrder = updateData.performance_order;
+		}
+
+		// Ensure performance_date is also saved as performanceDate for consistency
+		if (updateData.performance_date !== undefined) {
+			updatedArtist.performanceDate = updateData.performance_date;
+		}
+
+		// Ensure performance_status is also saved as performanceStatus for consistency
+		if (updateData.performance_status !== undefined) {
+			updatedArtist.performanceStatus = updateData.performance_status;
+		}
+
+		console.log(`PATCH artist ${artistId} - Updated fields:`, {
+			performance_order: updatedArtist.performance_order,
+			performanceOrder: updatedArtist.performanceOrder,
+			performance_date: updatedArtist.performance_date,
+			performanceDate: updatedArtist.performanceDate,
+			performance_status: updatedArtist.performance_status,
+			performanceStatus: updatedArtist.performanceStatus,
+		});
 
 		// Update the artist in the array
 		artists[artistIndex] = updatedArtist;
@@ -287,7 +312,6 @@ export async function DELETE(
 				artist_name: artistToDelete.artistName,
 				timestamp: new Date().toISOString(),
 			});
-			console.log(`Artist deleted: ${artistToDelete.artistName}`);
 		}
 
 		return NextResponse.json<APIResponse>({

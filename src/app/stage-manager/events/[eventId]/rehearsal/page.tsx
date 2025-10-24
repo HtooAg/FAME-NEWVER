@@ -56,6 +56,7 @@ interface Artist {
 	is_confirmed: boolean;
 	performance_date: string | null;
 	rehearsal_completed: boolean;
+	available_order: number | null;
 }
 
 export default function RehearsalSchedule() {
@@ -109,16 +110,13 @@ export default function RehearsalSchedule() {
 					userId: `rehearsal_${eventId}`,
 					showToasts: true,
 					onConnect: () => {
-						console.log("Rehearsal WebSocket connected");
 						setWsConnected(true);
 						setWsInitialized(true);
 					},
 					onDisconnect: () => {
-						console.log("Rehearsal WebSocket disconnected");
 						setWsConnected(false);
 					},
 					onDataUpdate: () => {
-						console.log("Rehearsal data update triggered");
 						fetchArtists();
 					},
 				});
@@ -128,10 +126,6 @@ export default function RehearsalSchedule() {
 				// Store reference for cleanup
 				(window as any).rehearsalWsManager = wsManager;
 			} catch (error) {
-				console.error(
-					"Error initializing Rehearsal WebSocket manager:",
-					error
-				);
 				setWsConnected(false);
 			}
 		};
@@ -149,18 +143,46 @@ export default function RehearsalSchedule() {
 		};
 	}, [eventId]);
 
-	// Debug effect to log artists state changes
+	// Initialize available_order for unscheduled artists if not set
 	useEffect(() => {
-		console.log(
-			"Artists state updated:",
-			artists.map((a) => ({
-				id: a.id,
-				name: a.artist_name,
-				rehearsal_order: a.rehearsal_order,
-				rehearsal_date: a.rehearsal_date,
-			}))
+		if (!selectedDate || artists.length === 0) return;
+
+		const unscheduled = artists.filter(
+			(a) =>
+				a.performance_date === selectedDate &&
+				(!a.rehearsal_date || a.rehearsal_date !== selectedDate)
 		);
-	}, [artists]);
+
+		// Check if any unscheduled artist is missing available_order
+		const needsInitialization = unscheduled.some(
+			(a) => a.available_order === null
+		);
+
+		if (needsInitialization) {
+			// Assign sequential orders to unscheduled artists
+			const updates = unscheduled
+				.filter((a) => a.available_order === null)
+				.map((artist, index) => {
+					const order =
+						unscheduled.filter((a) => a.available_order !== null)
+							.length + index;
+					return fetch(
+						`/api/events/${eventId}/artists/${artist.id}`,
+						{
+							method: "PATCH",
+							headers: { "Content-Type": "application/json" },
+							body: JSON.stringify({ available_order: order }),
+						}
+					);
+				});
+
+			if (updates.length > 0) {
+				Promise.all(updates).then(() => {
+					fetchArtists();
+				});
+			}
+		}
+	}, [artists, selectedDate, eventId]);
 
 	// Auto-normalize orders only when adding new artists to prevent conflicts
 	const autoNormalizeIfNeeded = async () => {
@@ -176,54 +198,12 @@ export default function RehearsalSchedule() {
 			const hasDuplicates = orders.length !== new Set(orders).size;
 
 			if (hasDuplicates) {
-				console.log(
-					"Auto-fixing duplicate orders after artist addition..."
-				);
 				setTimeout(() => {
 					// normalizeRehearsalOrders();
 				}, 1000);
 			}
 		}
 	};
-
-	// Add visibility change listener to refresh data when user returns to page
-	useEffect(() => {
-		const handleVisibilityChange = () => {
-			if (!document.hidden && eventId) {
-				console.log(
-					"Page became visible, refreshing rehearsal data from GCS..."
-				);
-				fetchArtists();
-			}
-		};
-
-		document.addEventListener("visibilitychange", handleVisibilityChange);
-
-		return () => {
-			document.removeEventListener(
-				"visibilitychange",
-				handleVisibilityChange
-			);
-		};
-	}, [eventId]);
-
-	// Add focus listener to refresh data when user returns to window
-	useEffect(() => {
-		const handleFocus = () => {
-			if (eventId) {
-				console.log(
-					"Window focused, refreshing rehearsal data from GCS..."
-				);
-				fetchArtists();
-			}
-		};
-
-		window.addEventListener("focus", handleFocus);
-
-		return () => {
-			window.removeEventListener("focus", handleFocus);
-		};
-	}, [eventId]);
 
 	const fetchEvent = async () => {
 		try {
@@ -244,7 +224,6 @@ export default function RehearsalSchedule() {
 				setSelectedDate(showDates[0]);
 			}
 		} catch (error) {
-			console.error("Error fetching event:", error);
 			toast({
 				title: "Error fetching event",
 				description: "Failed to load event details",
@@ -271,42 +250,31 @@ export default function RehearsalSchedule() {
 								artist.performanceDate ||
 								artist.performance_date
 						)
-						.map((artist: any) => {
-							console.log(`Mapping artist ${artist.id}:`, {
-								rehearsal_date: artist.rehearsal_date,
-								rehearsal_order: artist.rehearsal_order,
-								rehearsal_completed: artist.rehearsal_completed,
-								quality_rating: artist.quality_rating,
-							});
-
-							return {
-								id: artist.id,
-								artist_name:
-									artist.artistName || artist.artist_name,
-								style: artist.style,
-								performance_duration:
-									artist.performanceDuration ||
-									artist.performance_duration ||
-									5,
-								actual_duration:
-									artist.musicTracks?.find(
-										(track: any) => track.is_main_track
-									)?.duration || null,
-								quality_rating: artist.quality_rating || null,
-								rehearsal_date: artist.rehearsal_date || null,
-								rehearsal_order: artist.rehearsal_order || null,
-								is_confirmed: artist.is_confirmed || false,
-								performance_date:
-									artist.performanceDate ||
-									artist.performance_date,
-								rehearsal_completed:
-									artist.rehearsal_completed || false,
-							};
-						});
+						.map((artist: any) => ({
+							id: artist.id,
+							artist_name:
+								artist.artistName || artist.artist_name,
+							style: artist.style,
+							performance_duration:
+								artist.performanceDuration ||
+								artist.performance_duration ||
+								5,
+							actual_duration:
+								artist.musicTracks?.find(
+									(track: any) => track.is_main_track
+								)?.duration || null,
+							quality_rating: artist.quality_rating || null,
+							rehearsal_date: artist.rehearsal_date || null,
+							rehearsal_order: artist.rehearsal_order || null,
+							is_confirmed: artist.is_confirmed || false,
+							performance_date:
+								artist.performanceDate ||
+								artist.performance_date,
+							rehearsal_completed:
+								artist.rehearsal_completed || false,
+							available_order: artist.available_order ?? null,
+						}));
 					setArtists(assignedArtists);
-					console.log(
-						`Loaded ${assignedArtists.length} assigned artists for rehearsal scheduling from GCS`
-					);
 
 					if (showRefreshIndicator) {
 						toast({
@@ -316,14 +284,12 @@ export default function RehearsalSchedule() {
 						});
 					}
 				} else {
-					console.error("Failed to fetch artists:", data.error);
 					setArtists([]);
 				}
 			} else {
 				throw new Error("Failed to fetch artists");
 			}
 		} catch (error) {
-			console.error("Error fetching artists:", error);
 			toast({
 				title: "Error fetching artists",
 				description: "Failed to load artist list",
@@ -344,7 +310,6 @@ export default function RehearsalSchedule() {
 	const initializeWebSocket = async () => {
 		// Prevent multiple initializations
 		if (wsInitialized) {
-			console.log("WebSocket already initialized, skipping...");
 			return () => {};
 		}
 
@@ -362,15 +327,12 @@ export default function RehearsalSchedule() {
 				userId: `stage_manager_rehearsal_${eventId}`,
 				showToasts: true,
 				onConnect: () => {
-					console.log("Rehearsal WebSocket connected");
 					setWsConnected(true);
 				},
 				onDisconnect: () => {
-					console.log("Rehearsal WebSocket disconnected");
 					setWsConnected(false);
 				},
 				onDataUpdate: () => {
-					console.log("Rehearsal data update triggered");
 					fetchArtists();
 				},
 			});
@@ -389,7 +351,6 @@ export default function RehearsalSchedule() {
 				setWsInitialized(false);
 			};
 		} catch (error) {
-			console.error("Failed to initialize WebSocket:", error);
 			setWsInitialized(false);
 			throw error;
 		}
@@ -397,10 +358,6 @@ export default function RehearsalSchedule() {
 
 	const updateQualityRating = async (artistId: string, rating: number) => {
 		try {
-			console.log(
-				`Updating quality rating for artist ${artistId}: ${rating}`
-			);
-
 			const response = await fetch(
 				`/api/events/${eventId}/artists/${artistId}`,
 				{
@@ -413,9 +370,6 @@ export default function RehearsalSchedule() {
 			);
 
 			if (response.ok) {
-				const result = await response.json();
-				console.log("Quality rating API response:", result);
-
 				setArtists(
 					artists.map((artist) =>
 						artist.id === artistId
@@ -448,13 +402,11 @@ export default function RehearsalSchedule() {
 				}, 1000);
 			} else {
 				const errorData = await response.json();
-				console.error("API Error:", errorData);
 				throw new Error(
 					errorData.error?.message || "Failed to update rating"
 				);
 			}
 		} catch (error: any) {
-			console.error("Error updating quality rating:", error);
 			toast({
 				title: "Error updating rating",
 				description: error.message || "Failed to update quality rating",
@@ -475,10 +427,6 @@ export default function RehearsalSchedule() {
 
 			// Calculate next order number
 			const nextOrder = currentScheduled.length + 1;
-
-			console.log(
-				`Adding artist ${artistId} to rehearsal with order ${nextOrder}`
-			);
 
 			const response = await fetch(
 				`/api/events/${eventId}/artists/${artistId}`,
@@ -502,7 +450,6 @@ export default function RehearsalSchedule() {
 				throw new Error("Failed to add artist to rehearsal");
 			}
 		} catch (error) {
-			console.error("Error adding artist to rehearsal:", error);
 			toast({
 				title: "Error",
 				description: "Failed to add artist to rehearsal schedule",
@@ -514,8 +461,6 @@ export default function RehearsalSchedule() {
 	// Simple function to remove artist from rehearsal schedule
 	const removeArtistFromRehearsal = async (artistId: string) => {
 		try {
-			console.log(`Removing artist ${artistId} from rehearsal schedule`);
-
 			const response = await fetch(
 				`/api/events/${eventId}/artists/${artistId}`,
 				{
@@ -539,7 +484,6 @@ export default function RehearsalSchedule() {
 				throw new Error("Failed to remove artist from rehearsal");
 			}
 		} catch (error) {
-			console.error("Error removing artist from rehearsal:", error);
 			toast({
 				title: "Error",
 				description: "Failed to remove artist from rehearsal",
@@ -554,9 +498,6 @@ export default function RehearsalSchedule() {
 	) => {
 		try {
 			const newStatus = !currentStatus;
-			console.log(
-				`Toggling rehearsal status for artist ${artistId}: ${currentStatus} -> ${newStatus}`
-			);
 
 			const response = await fetch(
 				`/api/events/${eventId}/artists/${artistId}`,
@@ -570,9 +511,6 @@ export default function RehearsalSchedule() {
 			);
 
 			if (response.ok) {
-				const result = await response.json();
-				console.log("Rehearsal status API response:", result);
-
 				setArtists(
 					artists.map((artist) =>
 						artist.id === artistId
@@ -605,22 +543,14 @@ export default function RehearsalSchedule() {
 				setTimeout(() => {
 					fetchArtists();
 				}, 1000);
-
-				console.log(
-					`Artist ${artistId} rehearsal status updated: ${
-						newStatus ? "completed" : "uncompleted"
-					}`
-				);
 			} else {
 				const errorData = await response.json();
-				console.error("API Error:", errorData);
 				throw new Error(
 					errorData.error?.message ||
 						"Failed to update rehearsal status"
 				);
 			}
 		} catch (error: any) {
-			console.error("Error updating rehearsal status:", error);
 			toast({
 				title: "Error updating rehearsal status",
 				description:
@@ -644,11 +574,6 @@ export default function RehearsalSchedule() {
 		order: number
 	) => {
 		try {
-			console.log(`Scheduling rehearsal for artist ${artistId}:`, {
-				rehearsal_date: date,
-				rehearsal_order: order,
-			});
-
 			const response = await fetch(
 				`/api/events/${eventId}/artists/${artistId}`,
 				{
@@ -664,9 +589,6 @@ export default function RehearsalSchedule() {
 			);
 
 			if (response.ok) {
-				const result = await response.json();
-				console.log("Rehearsal scheduling API response:", result);
-
 				// Update local state immediately
 				setArtists(
 					artists.map((artist) =>
@@ -701,19 +623,13 @@ export default function RehearsalSchedule() {
 				setTimeout(() => {
 					fetchArtists();
 				}, 1000);
-
-				console.log(
-					`Rehearsal scheduled for artist ${artistId}: ${date}, order ${order}`
-				);
 			} else {
 				const errorData = await response.json();
-				console.error("API Error:", errorData);
 				throw new Error(
 					errorData.error?.message || "Failed to schedule rehearsal"
 				);
 			}
 		} catch (error: any) {
-			console.error("Error scheduling rehearsal:", error);
 			toast({
 				title: "Error scheduling rehearsal",
 				description: error.message || "Failed to schedule rehearsal",
@@ -753,18 +669,13 @@ export default function RehearsalSchedule() {
 		);
 	};
 
-	const moveUnscheduledArtist = (
+	const moveUnscheduledArtist = async (
 		artistId: string,
 		direction: "up" | "down"
 	) => {
-		// Get artists for the selected date first
-		const artistsForDate = artists.filter((a) => {
-			if (!selectedDate) return false;
-			return a.performance_date === selectedDate;
-		});
-		const filteredUnscheduled = artistsForDate.filter(
-			(a) => !a.rehearsal_date
-		);
+		// Get unscheduled artists for the selected date (already sorted)
+		const filteredUnscheduled = unscheduledArtists;
+
 		const currentIndex = filteredUnscheduled.findIndex(
 			(a) => a.id === artistId
 		);
@@ -774,27 +685,45 @@ export default function RehearsalSchedule() {
 			direction === "up" ? currentIndex - 1 : currentIndex + 1;
 		if (newIndex < 0 || newIndex >= filteredUnscheduled.length) return;
 
-		// Swap in artists array
-		const newArtists = [...artists];
-		const artistsToSwap = newArtists.filter(
-			(a) => a.performance_date === selectedDate && !a.rehearsal_date
-		);
-		const currentArtist = artistsToSwap[currentIndex];
-		const swapArtist = artistsToSwap[newIndex];
+		const currentArtist = filteredUnscheduled[currentIndex];
+		const swapArtist = filteredUnscheduled[newIndex];
 
-		const currentArtistIndex = newArtists.findIndex(
-			(a) => a.id === currentArtist.id
-		);
-		const swapArtistIndex = newArtists.findIndex(
-			(a) => a.id === swapArtist.id
-		);
-
-		[newArtists[currentArtistIndex], newArtists[swapArtistIndex]] = [
-			newArtists[swapArtistIndex],
-			newArtists[currentArtistIndex],
-		];
+		// Update local state immediately for responsive UI
+		const newArtists = artists.map((artist) => {
+			if (artist.id === currentArtist.id) {
+				return { ...artist, available_order: newIndex };
+			}
+			if (artist.id === swapArtist.id) {
+				return { ...artist, available_order: currentIndex };
+			}
+			return artist;
+		});
 
 		setArtists(newArtists);
+
+		// Persist the new order to backend
+		try {
+			await Promise.all([
+				fetch(`/api/events/${eventId}/artists/${currentArtist.id}`, {
+					method: "PATCH",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ available_order: newIndex }),
+				}),
+				fetch(`/api/events/${eventId}/artists/${swapArtist.id}`, {
+					method: "PATCH",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ available_order: currentIndex }),
+				}),
+			]);
+		} catch (error) {
+			toast({
+				title: "Error",
+				description: "Failed to update artist order",
+				variant: "destructive",
+			});
+			// Revert on error
+			fetchArtists();
+		}
 	};
 
 	const addToRehearsalOrder = (artistId: string) => {
@@ -806,16 +735,11 @@ export default function RehearsalSchedule() {
 		// Always use the count + 1 to ensure unique sequential ordering
 		const nextOrder = scheduledForDate.length + 1;
 
-		console.log(
-			`Adding artist ${artistId} to rehearsal with order ${nextOrder}`
-		);
 		scheduleRehearsal(artistId, selectedDate, nextOrder);
 	};
 
 	const removeFromRehearsal = async (artistId: string) => {
 		try {
-			console.log(`Removing artist ${artistId} from rehearsal schedule`);
-
 			const response = await fetch(
 				`/api/events/${eventId}/artists/${artistId}`,
 				{
@@ -831,9 +755,6 @@ export default function RehearsalSchedule() {
 			);
 
 			if (response.ok) {
-				const result = await response.json();
-				console.log("Remove from rehearsal API response:", result);
-
 				setArtists(
 					artists.map((artist) =>
 						artist.id === artistId
@@ -868,20 +789,14 @@ export default function RehearsalSchedule() {
 				setTimeout(() => {
 					fetchArtists();
 				}, 1000);
-
-				console.log(
-					`Artist ${artistId} removed from rehearsal schedule`
-				);
 			} else {
 				const errorData = await response.json();
-				console.error("API Error:", errorData);
 				throw new Error(
 					errorData.error?.message ||
 						"Failed to remove from rehearsal"
 				);
 			}
 		} catch (error: any) {
-			console.error("Error removing from rehearsal:", error);
 			toast({
 				title: "Error removing from rehearsal",
 				description:
@@ -951,9 +866,22 @@ export default function RehearsalSchedule() {
 		return a.performance_date === selectedDate;
 	});
 
-	const unscheduledArtists = artistsForSelectedDate.filter(
-		(a) => a.rehearsal_date === null || a.rehearsal_date !== selectedDate
-	);
+	const unscheduledArtists = artistsForSelectedDate
+		.filter(
+			(a) =>
+				a.rehearsal_date === null || a.rehearsal_date !== selectedDate
+		)
+		.sort((a, b) => {
+			// Sort by available_order if both have it
+			if (a.available_order !== null && b.available_order !== null) {
+				return a.available_order - b.available_order;
+			}
+			// Put items with available_order first
+			if (a.available_order !== null) return -1;
+			if (b.available_order !== null) return 1;
+			// Otherwise maintain original order
+			return 0;
+		});
 	const scheduledArtists = artistsForSelectedDate
 		.filter(
 			(a) =>

@@ -191,12 +191,7 @@ export default function PerformanceOrder() {
 					}),
 				});
 
-				if (response.ok) {
-					console.log(
-						"Cache manager initialized for event:",
-						eventId
-					);
-				}
+				// Cache initialized
 
 				// Import and initialize WebSocket manager
 				const { createWebSocketManager } = await import(
@@ -209,15 +204,12 @@ export default function PerformanceOrder() {
 					userId: `stage_manager_${eventId}`,
 					showToasts: true,
 					onConnect: () => {
-						console.log("Performance Order WebSocket connected");
 						setWsConnected(true);
 					},
 					onDisconnect: () => {
-						console.log("Performance Order WebSocket disconnected");
 						setWsConnected(false);
 					},
 					onDataUpdate: () => {
-						console.log("Performance Order data update triggered");
 						fetchArtists();
 						fetchEmergencyBroadcasts();
 					},
@@ -292,24 +284,11 @@ export default function PerformanceOrder() {
 				const evt = data.data || data.event || data;
 				const showDates = evt.show_dates || evt.showDates || [];
 
-				console.log("=== EVENT DATE DEBUG ===");
-				console.log("Full event data:", evt);
-				console.log("Raw event show dates:", showDates);
-				console.log("Event startDate:", evt.startDate);
-				console.log("Event endDate:", evt.endDate);
-				console.log("========================");
-
 				if (showDates.length > 0) {
-					// Use dates directly like rehearsal page - no normalization needed
-					console.log("Using event dates directly:", showDates);
 					setEventDates(showDates);
 
 					if (!selectedPerformanceDate && showDates.length > 0) {
 						setSelectedPerformanceDate(showDates[0]);
-						console.log(
-							"Set default performance date:",
-							showDates[0]
-						);
 					}
 				}
 			}
@@ -375,6 +354,17 @@ export default function PerformanceOrder() {
 						description:
 							"Event timing has been updated and saved to GCS",
 					});
+
+					// Emit WebSocket event to notify other pages (DJ, MC, Live Board)
+					const wsManager = (window as any).performanceOrderWsManager;
+					if (wsManager) {
+						wsManager.emit("timing-settings-updated", {
+							eventId,
+							backstage_ready_time: timings.backstage_ready_time,
+							show_start_time: timings.show_start_time,
+							timestamp: new Date().toISOString(),
+						});
+					}
 				} else {
 					throw new Error(result.error || "Failed to save timings");
 				}
@@ -407,27 +397,22 @@ export default function PerformanceOrder() {
 				socket = io();
 
 				socket.on("connect", () => {
-					console.log("Socket.IO connected for performance order");
 					setWsConnected(true);
 				});
 
 				socket.on("disconnect", () => {
-					console.log("Socket.IO disconnected");
 					setWsConnected(false);
 				});
 
 				socket.on("rehearsal_completed", (message: any) => {
-					console.log("Rehearsal completed:", message);
 					fetchArtists();
 				});
 
 				socket.on("performance_order_updated", (message: any) => {
-					console.log("Performance order updated:", message);
 					fetchArtists();
 				});
 
 				socket.on("emergency-alert", (message: any) => {
-					console.log("Emergency alert:", message);
 					fetchEmergencyBroadcasts();
 					toast({
 						title: `${message.data.emergency_code.toUpperCase()} EMERGENCY ALERT`,
@@ -437,7 +422,6 @@ export default function PerformanceOrder() {
 				});
 
 				socket.on("emergency-clear", (message: any) => {
-					console.log("Emergency clear:", message);
 					fetchEmergencyBroadcasts();
 					toast({
 						title: "Emergency alert cleared",
@@ -472,47 +456,84 @@ export default function PerformanceOrder() {
 			const response = await fetch(`/api/events/${eventId}/artists`);
 			if (response.ok) {
 				const data = await response.json();
-				console.log("Raw API response from /api/events/artists:", data);
 
 				if (data.success) {
-					const artists = (data.data || []).map((artist: any) => {
-						console.log(
-							`Loading artist ${
-								artist.artistName || artist.artist_name
-							} from GCS:`,
-							{
-								performance_order: artist.performance_order,
-								performance_status: artist.performance_status,
-								performance_date:
-									artist.performanceDate ||
-									artist.performance_date,
-								rehearsal_completed: artist.rehearsal_completed,
-							}
-						);
-						return {
-							id: artist.id,
-							artist_name:
-								artist.artistName || artist.artist_name,
-							style: artist.style,
-							performance_duration:
-								artist.performanceDuration ||
-								artist.performance_duration ||
-								5,
-							quality_rating: artist.quality_rating || null,
-							performance_order: artist.performance_order || null,
-							rehearsal_completed:
-								artist.rehearsal_completed || false,
-							performance_status:
-								artist.performance_status || null,
-							performance_date:
-								artist.performanceDate ||
-								artist.performance_date,
-							actual_duration:
-								artist.musicTracks?.find(
-									(track: any) => track.is_main_track
-								)?.duration || null,
-						};
-					});
+					const artists = (data.data || []).map(
+						(artist: any): Artist => {
+							// Handle both snake_case and camelCase field names
+							const performanceOrder =
+								artist.performance_order ??
+								artist.performanceOrder ??
+								null;
+							const performanceStatus =
+								artist.performance_status ??
+								artist.performanceStatus ??
+								null;
+							const performanceDate =
+								artist.performance_date ??
+								artist.performanceDate;
+							const artistName =
+								artist.artist_name ?? artist.artistName;
+							const performanceDuration =
+								artist.performance_duration ??
+								artist.performanceDuration ??
+								5;
+
+							return {
+								id: artist.id,
+								artist_name: artistName,
+								style: artist.style,
+								performance_duration: performanceDuration,
+								quality_rating: artist.quality_rating || null,
+								performance_order: performanceOrder,
+								rehearsal_completed:
+									artist.rehearsal_completed || false,
+								performance_status: performanceStatus,
+								performance_date: performanceDate,
+								actual_duration:
+									artist.musicTracks?.find(
+										(track: any) => track.is_main_track
+									)?.duration || null,
+							};
+						}
+					);
+
+					// Normalize selected performance date to YYYY-MM-DD format
+					const normalizeDate = (dateStr: string): string => {
+						if (!dateStr) return "";
+
+						// If already in YYYY-MM-DD format, return as is
+						if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+							return dateStr;
+						}
+
+						// If ISO format with time, extract date part
+						if (dateStr.includes("T")) {
+							return dateStr.split("T")[0];
+						}
+
+						// Try to parse and format
+						try {
+							const date = new Date(dateStr);
+							const year = date.getFullYear();
+							const month = String(date.getMonth() + 1).padStart(
+								2,
+								"0"
+							);
+							const day = String(date.getDate()).padStart(2, "0");
+							return `${year}-${month}-${day}`;
+						} catch (error) {
+							console.error(
+								`Failed to normalize date: ${dateStr}`,
+								error
+							);
+							return dateStr;
+						}
+					};
+
+					const normalizedSelectedDate = normalizeDate(
+						selectedPerformanceDate
+					);
 
 					// Filter artists for the selected performance date
 					const filteredArtists = artists.filter((a: Artist) => {
@@ -521,81 +542,17 @@ export default function PerformanceOrder() {
 							a.performance_date || (a as any).performanceDate;
 
 						if (!performanceDate) {
-							console.log(
-								`Artist ${a.artist_name} has no performance date, skipping`
-							);
 							return false; // Only show artists with performance dates
 						}
 
-						// Normalize both dates to YYYY-MM-DD format for comparison
-						let artistDate: string;
-						try {
-							// Handle different date formats
-							if (typeof performanceDate === "string") {
-								if (performanceDate.includes("T")) {
-									// ISO format: 2025-09-16T00:00:00.000Z
-									// Extract date part only
-									artistDate = performanceDate.split("T")[0];
-								} else if (
-									performanceDate.includes("-") &&
-									performanceDate.length === 10
-								) {
-									// Already in YYYY-MM-DD format
-									artistDate = performanceDate;
-								} else {
-									// Try to parse as date and format as YYYY-MM-DD
-									const parsedDate = new Date(
-										performanceDate
-									);
-									const year = parsedDate.getFullYear();
-									const month = String(
-										parsedDate.getMonth() + 1
-									).padStart(2, "0");
-									const day = String(
-										parsedDate.getDate()
-									).padStart(2, "0");
-									artistDate = `${year}-${month}-${day}`;
-								}
-							} else {
-								// Handle Date object
-								const dateObj = new Date(performanceDate);
-								const year = dateObj.getFullYear();
-								const month = String(
-									dateObj.getMonth() + 1
-								).padStart(2, "0");
-								const day = String(dateObj.getDate()).padStart(
-									2,
-									"0"
-								);
-								artistDate = `${year}-${month}-${day}`;
-							}
-						} catch (error) {
-							console.error(
-								`Error parsing performance_date for artist ${a.id}:`,
-								performanceDate,
-								error
-							);
-							return false;
-						}
+						// Normalize artist's performance date
+						const artistDate = normalizeDate(performanceDate);
 
-						// Normalize selectedPerformanceDate for comparison
-						let normalizedSelectedDate = selectedPerformanceDate;
-						if (selectedPerformanceDate.includes("T")) {
-							normalizedSelectedDate =
-								selectedPerformanceDate.split("T")[0];
-						}
-
-						console.log(
-							`Filtering artist ${a.artist_name}: artistDate=${artistDate}, selectedDate=${selectedPerformanceDate}, normalizedSelectedDate=${normalizedSelectedDate}, rawDate=${performanceDate}`
-						);
 						return artistDate === normalizedSelectedDate;
 					});
 
 					// Artists who completed rehearsal but not yet assigned to show order
 					const completed = filteredArtists.filter((a: Artist) => {
-						console.log(
-							`Checking artist ${a.artist_name}: rehearsal_completed=${a.rehearsal_completed}, performance_order=${a.performance_order}, performance_status=${a.performance_status}`
-						);
 						return (
 							a.rehearsal_completed &&
 							a.performance_order === null &&
@@ -615,12 +572,6 @@ export default function PerformanceOrder() {
 									a.rehearsal_completed)
 						)
 						.map((artist: Artist) => {
-							console.log(
-								`Mapping artist ${artist.artist_name} with status:`,
-								artist.performance_status,
-								`order: ${artist.performance_order}`
-							);
-
 							// If artist has status but no order, assign a temporary order for display
 							let displayOrder = artist.performance_order;
 							if (
@@ -642,9 +593,6 @@ export default function PerformanceOrder() {
 										)
 								);
 								displayOrder = maxOrder + 1;
-								console.log(
-									`Auto-assigning order ${displayOrder} to artist ${artist.artist_name} with status ${artist.performance_status}`
-								);
 							}
 
 							return {
@@ -656,7 +604,7 @@ export default function PerformanceOrder() {
 								},
 								performance_order: displayOrder || 0,
 								status: (artist.performance_status ||
-									"not_started") as ShowOrderItem["status"],
+									"not_started") as ShowOrderItem["status"], // Default to Back Stage (not_started)
 							};
 						});
 
@@ -670,12 +618,6 @@ export default function PerformanceOrder() {
 							const cuesResult = await cuesResponse.json();
 							if (cuesResult.success) {
 								cueItems = cuesResult.data.map((cue: any) => {
-									console.log(
-										`Mapping cue ${cue.title} with performance_status:`,
-										cue.performance_status,
-										"is_completed:",
-										cue.is_completed
-									);
 									return {
 										id: cue.id,
 										type: "cue" as const,
@@ -685,7 +627,7 @@ export default function PerformanceOrder() {
 										status: (cue.performance_status ||
 											(cue.is_completed
 												? "completed"
-												: "not_started")) as ShowOrderItem["status"],
+												: "not_started")) as ShowOrderItem["status"], // Default to Back Stage (not_started)
 									};
 								});
 							}
@@ -712,9 +654,6 @@ export default function PerformanceOrder() {
 					);
 
 					if (artistsToFix.length > 0) {
-						console.log(
-							`Found ${artistsToFix.length} artists with inconsistent state, fixing...`
-						);
 						// Fix them in the background
 						artistsToFix.forEach(async (item: ShowOrderItem) => {
 							if (item.artist) {
@@ -735,14 +674,8 @@ export default function PerformanceOrder() {
 											}),
 										}
 									);
-									console.log(
-										`Fixed performance_order for artist ${item.artist.artist_name}`
-									);
 								} catch (error) {
-									console.error(
-										`Failed to fix artist ${item.artist.id}:`,
-										error
-									);
+									// Silent fail for background fix
 								}
 							}
 						});
@@ -750,38 +683,6 @@ export default function PerformanceOrder() {
 
 					setCompletedArtists(completed);
 					setShowOrderItems(allShowOrderItems);
-
-					console.log("=== PERFORMANCE ORDER DEBUG ===");
-					console.log(
-						`Selected performance date: ${selectedPerformanceDate}`
-					);
-					console.log(`Total artists from API: ${artists.length}`);
-					console.log(
-						`Filtered artists for date: ${filteredArtists.length}`
-					);
-					console.log(`Completed artists: ${completed.length}`);
-					console.log(
-						`Show order items: ${allShowOrderItems.length}`
-					);
-					console.log(
-						"Completed artists:",
-						completed.map((a) => ({
-							name: a.artist_name,
-							date: a.performance_date,
-						}))
-					);
-					console.log(
-						"Show order items:",
-						allShowOrderItems.map((a) => ({
-							name:
-								a.type === "artist"
-									? a.artist?.artist_name
-									: a.cue?.title,
-							type: a.type,
-							order: a.performance_order,
-						}))
-					);
-					console.log("=== END DEBUG ===");
 
 					if (showRefreshIndicator) {
 						toast({
@@ -821,11 +722,6 @@ export default function PerformanceOrder() {
 		}
 
 		const nextOrder = showOrderItems.length + 1;
-		console.log(`Assigning artist ${artistId} to show order with:`, {
-			performance_order: nextOrder,
-			performance_date: selectedPerformanceDate,
-			performance_status: "not_started",
-		});
 
 		try {
 			const response = await fetch(
@@ -839,16 +735,13 @@ export default function PerformanceOrder() {
 						performance_order: nextOrder,
 						performance_date: selectedPerformanceDate,
 						performanceDate: selectedPerformanceDate, // Also set this field for consistency
-						performance_status: "not_started", // Set initial status
+						performance_status: "not_started", // Set initial status to Back Stage (not_started)
 					}),
 				}
 			);
 
-			console.log(`Assignment API response status: ${response.status}`);
-
 			if (response.ok) {
 				const result = await response.json();
-				console.log(`Assignment API result:`, result);
 
 				if (result.success) {
 					toast({
@@ -868,18 +761,11 @@ export default function PerformanceOrder() {
 							performanceDate: selectedPerformanceDate,
 						});
 					}
-
-					// Refresh from GCS after a short delay to ensure data persistence
-					console.log("Refreshing from GCS...");
-					setTimeout(() => {
-						fetchArtists();
-					}, 1000); // Reduced delay since WebSocket will handle real-time updates
 				} else {
 					throw new Error(result.error || "Failed to assign artist");
 				}
 			} else {
 				const errorData = await response.json();
-				console.error(`Assignment API error:`, errorData);
 				throw new Error(errorData.error || "Failed to assign artist");
 			}
 		} catch (error) {
@@ -1015,67 +901,79 @@ export default function PerformanceOrder() {
 		const [reorderedItem] = items.splice(result.source.index, 1);
 		items.splice(result.destination.index, 0, reorderedItem);
 
-		// Update performance orders
+		// Update performance orders for ALL items
 		const updatedItems = items.map((item, index) => ({
 			...item,
 			performance_order: index + 1,
 		}));
 
+		// Update local state immediately for better UX
 		setShowOrderItems(updatedItems);
 
 		try {
-			// Update all artist performance orders individually for reliability
-			const artistUpdates = updatedItems.filter(
-				(item) => item.type === "artist"
-			);
-
-			if (artistUpdates.length > 0) {
-				await Promise.all(
-					artistUpdates.map(async (item) => {
-						const response = await fetch(
-							`/api/events/${eventId}/artists/${item.id}`,
-							{
-								method: "PATCH",
-								headers: {
-									"Content-Type": "application/json",
-								},
-								body: JSON.stringify({
-									performance_order: item.performance_order,
-									performance_date: selectedPerformanceDate,
-								}),
-							}
-						);
-
-						if (!response.ok) {
-							const errorData = await response.json();
-							throw new Error(
-								errorData.error?.message ||
-									`Failed to update artist ${item.id}`
-							);
+			// Update all items (both artists and cues)
+			const updatePromises = updatedItems.map(async (item) => {
+				if (item.type === "artist" && item.artist) {
+					const response = await fetch(
+						`/api/events/${eventId}/artists/${item.artist.id}`,
+						{
+							method: "PATCH",
+							headers: {
+								"Content-Type": "application/json",
+							},
+							body: JSON.stringify({
+								performance_order: item.performance_order,
+								performance_date: selectedPerformanceDate,
+							}),
 						}
-					})
-				);
-			}
+					);
 
-			// Update cue orders
-			const cueUpdates = updatedItems.filter(
-				(item) => item.type === "cue"
-			);
-			for (const item of cueUpdates) {
-				if (item.cue) {
-					await fetch(`/api/events/${eventId}/cues`, {
-						method: "PATCH",
-						headers: {
-							"Content-Type": "application/json",
-						},
-						body: JSON.stringify({
-							id: item.id,
-							performance_order: item.performance_order,
-							performanceDate: selectedPerformanceDate,
-						}),
-					});
+					if (!response.ok) {
+						const errorData = await response.json();
+						console.error(
+							`Failed to update artist ${item.artist.id}:`,
+							errorData
+						);
+						throw new Error(
+							errorData.error?.message ||
+								`Failed to update artist ${item.artist.artist_name}`
+						);
+					}
+
+					return response.json();
+				} else if (item.type === "cue" && item.cue) {
+					const response = await fetch(
+						`/api/events/${eventId}/cues`,
+						{
+							method: "PATCH",
+							headers: {
+								"Content-Type": "application/json",
+							},
+							body: JSON.stringify({
+								id: item.cue.id,
+								performance_order: item.performance_order,
+								performanceDate: selectedPerformanceDate,
+							}),
+						}
+					);
+
+					if (!response.ok) {
+						const errorData = await response.json();
+						console.error(
+							`Failed to update cue ${item.cue.id}:`,
+							errorData
+						);
+						throw new Error(
+							`Failed to update cue ${item.cue.title}`
+						);
+					}
+
+					return response.json();
 				}
-			}
+			});
+
+			// Wait for all updates to complete
+			await Promise.all(updatePromises);
 
 			toast({
 				title: "Order updated",
@@ -1098,7 +996,10 @@ export default function PerformanceOrder() {
 			fetchArtists();
 			toast({
 				title: "Error updating order",
-				description: "Failed to save new performance order",
+				description:
+					error instanceof Error
+						? error.message
+						: "Failed to save new performance order",
 				variant: "destructive",
 			});
 		}
@@ -1114,12 +1015,6 @@ export default function PerformanceOrder() {
 			});
 			return;
 		}
-
-		console.log("Adding cue with:", {
-			cueType,
-			selectedPerformanceDate,
-			showOrderItemsLength: showOrderItems.length,
-		});
 
 		const cueLabels = {
 			opening: "Opening",
@@ -1139,9 +1034,8 @@ export default function PerformanceOrder() {
 			duration: 5, // Default 5 minutes
 			performance_order: showOrderItems.length + 1,
 			performanceDate: selectedPerformanceDate,
+			performance_status: "not_started", // Set initial status to Back Stage (not_started)
 		};
-
-		console.log("Creating new cue:", newCue);
 
 		try {
 			const response = await fetch(`/api/events/${eventId}/cues`, {
@@ -1178,7 +1072,6 @@ export default function PerformanceOrder() {
 				}
 			} else {
 				const errorData = await response.json();
-				console.error("API error response:", errorData);
 				throw new Error(errorData.error || "Failed to add cue");
 			}
 		} catch (error) {
@@ -1313,17 +1206,12 @@ export default function PerformanceOrder() {
 	) => {
 		// Find the item to determine if it's an artist or cue
 		const item = showOrderItems.find((i) => i.id === itemId);
-		if (!item) {
-			console.error(`Item ${itemId} not found`);
-			return;
-		}
+		if (!item) return;
 
 		// Store original status for potential revert
 		const originalStatus = item.status;
 
 		try {
-			console.log(`Updating status for item ${itemId} to ${newStatus}`);
-
 			// Update local state immediately for better UX
 			setShowOrderItems((prevItems) =>
 				prevItems.map((i) =>
@@ -1348,7 +1236,6 @@ export default function PerformanceOrder() {
 
 				if (response.ok) {
 					const result = await response.json();
-					console.log("Artist status update result:", result);
 
 					// Emit WebSocket event for real-time updates
 					const wsManager = (window as any).performanceOrderWsManager;
@@ -1357,7 +1244,7 @@ export default function PerformanceOrder() {
 							eventId,
 							artistId: item.artist.id,
 							artist_name: item.artist.artist_name,
-							status: newStatus,
+							status: newStatus || "not_started",
 							performanceDate: selectedPerformanceDate,
 							timestamp: new Date().toISOString(),
 						});
@@ -1365,9 +1252,9 @@ export default function PerformanceOrder() {
 
 					toast({
 						title: "Status Updated",
-						description: `${
-							item.artist.artist_name
-						} is now ${newStatus.replace("_", " ")}`,
+						description: `${item.artist.artist_name} is now ${(
+							newStatus || "not_started"
+						).replace("_", " ")}`,
 					});
 				} else {
 					throw new Error("Failed to update artist status");
@@ -1388,7 +1275,6 @@ export default function PerformanceOrder() {
 
 				if (response.ok) {
 					const result = await response.json();
-					console.log("Cue status update result:", result);
 
 					// Emit WebSocket event for real-time updates
 					const wsManager = (window as any).performanceOrderWsManager;
@@ -1398,7 +1284,7 @@ export default function PerformanceOrder() {
 							cueId: item.cue.id,
 							action: "status_updated",
 							cue: item.cue,
-							status: newStatus,
+							status: newStatus || "not_started",
 							performanceDate: selectedPerformanceDate,
 							timestamp: new Date().toISOString(),
 						});
@@ -1406,19 +1292,16 @@ export default function PerformanceOrder() {
 
 					toast({
 						title: "Cue Status Updated",
-						description: `${
-							item.cue.title
-						} is now ${newStatus.replace("_", " ")}`,
+						description: `${item.cue.title} is now ${(
+							newStatus || "not_started"
+						).replace("_", " ")}`,
 					});
 				} else {
 					throw new Error("Failed to update cue status");
 				}
 			}
 
-			// Refresh data after a short delay to ensure consistency
-			setTimeout(() => {
-				fetchArtists();
-			}, 1000);
+			// Data will be refreshed via WebSocket event
 		} catch (error) {
 			console.error("Error updating item status:", error);
 
@@ -1442,8 +1325,6 @@ export default function PerformanceOrder() {
 
 	const moveItem = async (itemId: string, direction: "up" | "down") => {
 		try {
-			console.log(`Moving item ${itemId} ${direction}`);
-
 			const currentIndex = showOrderItems.findIndex(
 				(item) => item.id === itemId
 			);
@@ -1460,39 +1341,61 @@ export default function PerformanceOrder() {
 				newItems[currentIndex],
 			];
 
-			// Update performance orders
-			newItems.forEach((item, index) => {
-				item.performance_order = index + 1;
-			});
+			// Update performance orders for ALL items to ensure consistency
+			const updatedItems = newItems.map((item, index) => ({
+				...item,
+				performance_order: index + 1,
+			}));
 
-			// Update local state immediately
-			setShowOrderItems(newItems);
+			// Update local state immediately for better UX
+			setShowOrderItems(updatedItems);
 
 			// Update each item's order in the database
-			for (const item of newItems) {
+			const updatePromises = updatedItems.map(async (item) => {
 				if (item.type === "artist" && item.artist) {
-					await fetch(
+					const response = await fetch(
 						`/api/events/${eventId}/artists/${item.artist.id}`,
 						{
 							method: "PATCH",
 							headers: { "Content-Type": "application/json" },
 							body: JSON.stringify({
 								performance_order: item.performance_order,
+								performance_date: selectedPerformanceDate,
 							}),
 						}
 					);
+
+					if (!response.ok) {
+						throw new Error(
+							`Failed to update artist ${item.artist.artist_name}`
+						);
+					}
+					return response.json();
 				} else if (item.type === "cue" && item.cue) {
-					await fetch(`/api/events/${eventId}/cues`, {
-						method: "PATCH",
-						headers: { "Content-Type": "application/json" },
-						body: JSON.stringify({
-							cueId: item.cue.id,
-							performance_order: item.performance_order,
-							performanceDate: selectedPerformanceDate,
-						}),
-					});
+					const response = await fetch(
+						`/api/events/${eventId}/cues`,
+						{
+							method: "PATCH",
+							headers: { "Content-Type": "application/json" },
+							body: JSON.stringify({
+								id: item.cue.id,
+								performance_order: item.performance_order,
+								performanceDate: selectedPerformanceDate,
+							}),
+						}
+					);
+
+					if (!response.ok) {
+						throw new Error(
+							`Failed to update cue ${item.cue.title}`
+						);
+					}
+					return response.json();
 				}
-			}
+			});
+
+			// Wait for all updates to complete
+			await Promise.all(updatePromises);
 
 			// Emit WebSocket event for real-time updates
 			const wsManager = (window as any).performanceOrderWsManager;
@@ -1516,7 +1419,10 @@ export default function PerformanceOrder() {
 
 			toast({
 				title: "Error updating order",
-				description: "Failed to update performance order",
+				description:
+					error instanceof Error
+						? error.message
+						: "Failed to update performance order",
 				variant: "destructive",
 			});
 		}
@@ -1570,10 +1476,7 @@ export default function PerformanceOrder() {
 				fetchEmergencyBroadcasts();
 
 				// Broadcast via WebSocket to all connected dashboards
-				if (wsConnected) {
-					// The WebSocket will handle broadcasting to all connected clients
-					console.log("Emergency broadcast sent via WebSocket");
-				}
+				// WebSocket will handle broadcasting to all connected clients
 			} else {
 				throw new Error("Failed to create emergency broadcast");
 			}
@@ -1662,13 +1565,11 @@ export default function PerformanceOrder() {
 				return "bg-red-50 border-red-200 text-red-800 shadow-sm";
 			case "currently_on_stage":
 				return "bg-green-50 border-green-200 text-green-800 shadow-sm";
-			case "next_on_stage":
-				return "bg-yellow-50 border-yellow-200 text-yellow-800 shadow-sm";
 			case "next_on_deck":
 				return "bg-blue-50 border-blue-200 text-blue-800 shadow-sm";
 			case "not_started":
 			default:
-				return "bg-white border-gray-200 text-gray-900 shadow-sm";
+				return "bg-white border-gray-200 text-gray-900 shadow-sm"; // Back Stage - White background
 		}
 	};
 
@@ -2303,10 +2204,6 @@ export default function PerformanceOrder() {
 																					</SelectTrigger>
 																					<SelectContent>
 																						<SelectItem value="not_started">
-																							Not
-																							Started
-																						</SelectItem>
-																						<SelectItem value="next_on_stage">
 																							Back
 																							Stage
 																						</SelectItem>

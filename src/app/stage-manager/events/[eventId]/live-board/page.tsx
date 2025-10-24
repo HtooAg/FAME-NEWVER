@@ -139,11 +139,37 @@ export default function LivePerformanceBoard() {
 		emergency_code: "green",
 	});
 	const [wsConnected, setWsConnected] = useState(false);
+	const [currentTime, setCurrentTime] = useState<Date | null>(null); // Start as null to avoid hydration mismatch
+	const [eventTimings, setEventTimings] = useState<{
+		backstage_ready_time?: string;
+		show_start_time?: string;
+	}>({});
+	const [elapsedTime, setElapsedTime] = useState(0); // Track elapsed time for current performer
+
+	// Real-time clock update (client-side only to avoid hydration mismatch)
+	useEffect(() => {
+		// Set initial time on client
+		setCurrentTime(new Date());
+
+		const timer = setInterval(() => {
+			setCurrentTime(new Date());
+			// Increment elapsed time every second
+			setElapsedTime((prev) => prev + 1);
+		}, 1000);
+
+		return () => clearInterval(timer);
+	}, []);
+
+	// Reset elapsed time when performer changes
+	useEffect(() => {
+		setElapsedTime(0);
+	}, [currentPerformerIndex]);
 
 	useEffect(() => {
 		if (eventId) {
 			fetchEventData();
 			fetchEventDates();
+			fetchEventTimings();
 		}
 
 		// Listen for WebSocket toast events
@@ -222,6 +248,25 @@ export default function LivePerformanceBoard() {
 			}
 		} catch (error) {
 			console.error("Error fetching event dates:", error);
+		}
+	};
+
+	const fetchEventTimings = async () => {
+		try {
+			const response = await fetch(
+				`/api/events/${eventId}/timing-settings`
+			);
+			if (response.ok) {
+				const result = await response.json();
+				if (result.success && result.data) {
+					setEventTimings({
+						backstage_ready_time: result.data.backstage_ready_time,
+						show_start_time: result.data.show_start_time,
+					});
+				}
+			}
+		} catch (error) {
+			console.error("Error fetching event timings:", error);
 		}
 	};
 	const fetchData = useCallback(async () => {
@@ -442,6 +487,7 @@ export default function LivePerformanceBoard() {
 								"Refreshing Live Board emergency broadcasts..."
 							);
 							fetchEmergencyBroadcasts();
+							fetchEventTimings();
 						}, 100);
 					},
 				});
@@ -777,6 +823,53 @@ export default function LivePerformanceBoard() {
 		}
 	};
 
+	// Calculate total show time
+	const calculateTotalShowTime = () => {
+		return performanceItems.reduce((total, item) => {
+			if (item.type === "artist" && item.artist) {
+				return total + (item.artist.performance_duration || 0);
+			} else if (item.type === "cue" && item.cue) {
+				return total + (item.cue.duration || 0) * 60; // Convert minutes to seconds
+			}
+			return total;
+		}, 0);
+	};
+
+	// Calculate remaining time with live countdown
+	const calculateRemainingTime = () => {
+		const remainingItems = performanceItems.slice(currentPerformerIndex);
+		const totalRemaining = remainingItems.reduce((total, item) => {
+			if (item.type === "artist" && item.artist) {
+				return total + (item.artist.performance_duration || 0);
+			} else if (item.type === "cue" && item.cue) {
+				return total + (item.cue.duration || 0) * 60;
+			}
+			return total;
+		}, 0);
+
+		// Subtract elapsed time from current performer
+		return Math.max(0, totalRemaining - elapsedTime);
+	};
+
+	// Format time in HH:MM:SS
+	const formatTimeDisplay = (seconds: number) => {
+		const hours = Math.floor(seconds / 3600);
+		const minutes = Math.floor((seconds % 3600) / 60);
+		const secs = seconds % 60;
+		return `${hours}h ${minutes}m ${secs}s`;
+	};
+
+	// Format current time (handle null for SSR)
+	const formatCurrentTime = (date: Date | null) => {
+		if (!date) return "--:--:--";
+		return date.toLocaleTimeString("en-US", {
+			hour: "2-digit",
+			minute: "2-digit",
+			second: "2-digit",
+			hour12: true,
+		});
+	};
+
 	// Get items by status and position
 	const getCurrentItem = () => performanceItems[currentPerformerIndex];
 	const getNextItem = () => performanceItems[currentPerformerIndex + 1];
@@ -946,16 +1039,7 @@ export default function LivePerformanceBoard() {
 										</span>
 									</div>
 								</div>
-								<Button
-									size="sm"
-									variant="outline"
-									className="bg-white/20 hover:bg-white/30"
-									onClick={() =>
-										deactivateBroadcast(broadcast.id)
-									}
-								>
-									Clear Alert
-								</Button>
+								  
 							</div>
 						</div>
 					))}
@@ -1001,6 +1085,78 @@ export default function LivePerformanceBoard() {
 				</div>
 			)}{" "}
 			<main className="container mx-auto px-4 py-8">
+				{/* Real-Time Clock and Timing Overview */}
+				<div className="mb-8 grid grid-cols-1 md:grid-cols-4 gap-4">
+					<Card>
+						<CardContent className="pt-6">
+							<div className="flex items-center justify-between">
+								<div>
+									<p className="text-sm font-medium text-muted-foreground">
+										Current Time
+									</p>
+									<p className="text-2xl font-bold">
+										{formatCurrentTime(currentTime)}
+									</p>
+								</div>
+								<Clock className="h-8 w-8 text-blue-500" />
+							</div>
+						</CardContent>
+					</Card>
+
+					<Card>
+						<CardContent className="pt-6">
+							<div className="flex items-center justify-between">
+								<div>
+									<p className="text-sm font-medium text-muted-foreground">
+										Total Show Time
+									</p>
+									<p className="text-2xl font-bold">
+										{formatTimeDisplay(
+											calculateTotalShowTime()
+										)}
+									</p>
+								</div>
+								<Timer className="h-8 w-8 text-purple-500" />
+							</div>
+						</CardContent>
+					</Card>
+
+					<Card>
+						<CardContent className="pt-6">
+							<div className="flex items-center justify-between">
+								<div>
+									<p className="text-sm font-medium text-muted-foreground">
+										Remaining Time
+									</p>
+									<p className="text-2xl font-bold">
+										{formatTimeDisplay(
+											calculateRemainingTime()
+										)}
+									</p>
+								</div>
+								<Timer className="h-8 w-8 text-orange-500" />
+							</div>
+						</CardContent>
+					</Card>
+
+					<Card>
+						<CardContent className="pt-6">
+							<div className="flex items-center justify-between">
+								<div>
+									<p className="text-sm font-medium text-muted-foreground">
+										Show Start
+									</p>
+									<p className="text-2xl font-bold">
+										{eventTimings.show_start_time ||
+											"--:--"}
+									</p>
+								</div>
+								<Play className="h-8 w-8 text-green-500" />
+							</div>
+						</CardContent>
+					</Card>
+				</div>
+
 				{/* Performance Controls */}
 				<Card className="mb-8">
 					<CardHeader>

@@ -9,15 +9,15 @@ export type ArtistStatus =
 	| "completed";
 
 export const STATUS_COLORS = {
-	not_started: "bg-white border-gray-300 text-gray-900",
-	next_on_deck: "bg-white border-blue-300 text-blue-900",
-	next_on_stage: "bg-white border-yellow-300 text-yellow-900",
-	currently_on_stage: "bg-white border-green-300 text-green-900",
-	completed: "bg-white border-red-300 text-red-900",
+	not_started: "bg-white border-gray-300 text-gray-900", // Back Stage - White background
+	next_on_deck: "bg-blue-50 border-blue-200 text-blue-800", // Next on Deck - Blue background
+	next_on_stage: "bg-yellow-50 border-yellow-200 text-yellow-800", // Next On Stage - Yellow background (not used in dropdown)
+	currently_on_stage: "bg-green-50 border-green-200 text-green-800", // Currently on Stage - Green background
+	completed: "bg-red-50 border-red-200 text-red-800", // Completed - Red background
 } as const;
 
 export const STATUS_LABELS = {
-	not_started: "Not Started",
+	not_started: "Back Stage", // Changed from "Not Started" to "Back Stage"
 	next_on_deck: "Next On Deck",
 	next_on_stage: "Next On Stage",
 	currently_on_stage: "Currently On Stage",

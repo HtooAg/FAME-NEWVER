@@ -91,6 +91,17 @@ export async function PATCH(
 
 		console.log("Timing settings saved to GCS successfully");
 
+		// Broadcast WebSocket event to all connected clients
+		if (global.io) {
+			global.io.to(`event_${eventId}`).emit("timing-settings-updated", {
+				eventId,
+				backstage_ready_time,
+				show_start_time,
+				timestamp: new Date().toISOString(),
+			});
+			console.log(`Timing settings update broadcast to event_${eventId}`);
+		}
+
 		return NextResponse.json({
 			success: true,
 			data: timingSettings,

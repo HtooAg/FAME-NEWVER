@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
@@ -32,11 +32,32 @@ import {
 	Navigation,
 	ArrowLeft,
 	LogOut,
+	Clock,
+	Timer,
+	AlertTriangle,
+	Users,
+	Mic,
+	Video,
+	Speaker,
+	Trash2,
+	CheckCircle,
+	Sparkles,
+	RefreshCw,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { AudioPlayer } from "@/components/ui/audio-player";
 import { VideoPlayer, ImageViewer } from "@/components/ui/video-player";
 import { formatDuration } from "@/lib/media-utils";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { formatDateSimple } from "@/lib/date-utils";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 
 interface ArtistProfile {
 	id: string;
@@ -84,6 +105,47 @@ interface ArtistProfile {
 	eventId: string;
 	status: string;
 	createdAt: string;
+	performanceDate?: string;
+}
+
+interface LiveBoardArtist {
+	id: string;
+	artist_name: string;
+	style: string;
+	image_url?: string;
+	performance_order: number | null;
+	performance_duration: number;
+	actual_duration?: number | null;
+	performance_status?: string | null;
+	performance_date?: string | null;
+	mc_notes?: string | null;
+}
+
+interface LiveBoardCue {
+	id: string;
+	type: string;
+	title: string;
+	duration: number;
+	performance_order: number;
+	notes?: string;
+	performance_status?: string | null;
+}
+
+interface PerformanceItem {
+	id: string;
+	type: "artist" | "cue";
+	artist?: LiveBoardArtist;
+	cue?: LiveBoardCue;
+	performance_order: number;
+	status?: string | null;
+}
+
+interface EmergencyBroadcast {
+	id: string;
+	message: string;
+	emergency_code: string;
+	is_active: boolean;
+	created_at: string;
 }
 
 // Helper function to get color style
@@ -125,6 +187,26 @@ export default function ArtistDashboard() {
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 
+	// Live Board state
+	const [performanceItems, setPerformanceItems] = useState<PerformanceItem[]>(
+		[]
+	);
+	const [emergencyBroadcasts, setEmergencyBroadcasts] = useState<
+		EmergencyBroadcast[]
+	>([]);
+	const [wsConnected, setWsConnected] = useState(false);
+	const [currentTime, setCurrentTime] = useState<Date | null>(null);
+	const [eventTimings, setEventTimings] = useState<{
+		backstage_ready_time?: string;
+		show_start_time?: string;
+	}>({});
+	const [elapsedTime, setElapsedTime] = useState(0);
+	const [currentPerformerIndex, setCurrentPerformerIndex] = useState(0);
+	const [availableDates, setAvailableDates] = useState<string[]>([]);
+	const [selectedPerformanceDate, setSelectedPerformanceDate] =
+		useState<string>("");
+	const [refreshTrigger, setRefreshTrigger] = useState(0);
+
 	const artistId = params.artistId as string;
 
 	useEffect(() => {
@@ -135,6 +217,270 @@ export default function ArtistDashboard() {
 			setLoading(false);
 		}
 	}, [artistId]);
+
+	// Real-time clock update for live board
+	useEffect(() => {
+		setCurrentTime(new Date());
+		const timer = setInterval(() => {
+			setCurrentTime(new Date());
+			setElapsedTime((prev) => prev + 1);
+		}, 1000);
+		return () => clearInterval(timer);
+	}, []);
+
+	// Reset elapsed time when performer changes
+	useEffect(() => {
+		setElapsedTime(0);
+	}, [currentPerformerIndex]);
+
+	// Fetch event dates when profile is loaded (only once)
+	useEffect(() => {
+		const loadEventDates = async () => {
+			if (!profile?.eventId) return;
+			try {
+				const response = await fetch(`/api/events/${profile.eventId}`);
+				if (response.ok) {
+					const data = await response.json();
+					const evt = data.data || data.event || data;
+					const showDates = evt.show_dates || evt.showDates || [];
+
+					if (showDates.length > 0) {
+						setAvailableDates(showDates);
+						// Only set default date if no date is currently selected
+						if (!selectedPerformanceDate) {
+							if (profile.performanceDate) {
+								setSelectedPerformanceDate(
+									profile.performanceDate
+								);
+							} else if (showDates.length > 0) {
+								setSelectedPerformanceDate(showDates[0]);
+							}
+						}
+					}
+				}
+			} catch (error) {
+				console.error("Error fetching event dates:", error);
+			}
+		};
+
+		if (profile?.eventId && availableDates.length === 0) {
+			loadEventDates();
+		}
+	}, [
+		profile?.eventId,
+		profile?.performanceDate,
+		selectedPerformanceDate,
+		availableDates.length,
+	]);
+
+	// Fetch live board data when date is selected
+	useEffect(() => {
+		const loadLiveBoardData = async () => {
+			if (!profile?.eventId || !selectedPerformanceDate) return;
+
+			try {
+				const response = await fetch(
+					`/api/events/${profile.eventId}/artists`
+				);
+				if (response.ok) {
+					const data = await response.json();
+					if (data.success) {
+						const artists = (data.data || []).map(
+							(artist: any) => ({
+								id: artist.id,
+								artist_name:
+									artist.artistName || artist.artist_name,
+								style: artist.style,
+								image_url: artist.image_url || "",
+								performance_duration:
+									artist.performanceDuration ||
+									artist.performance_duration ||
+									5,
+								actual_duration:
+									artist.musicTracks?.find(
+										(track: any) => track.is_main_track
+									)?.duration || null,
+								performance_order:
+									artist.performance_order || null,
+								performance_status:
+									artist.performance_status || null,
+								performance_date:
+									artist.performanceDate ||
+									artist.performance_date,
+								mc_notes: artist.mc_notes,
+							})
+						);
+
+						const filteredArtists = artists.filter(
+							(a: LiveBoardArtist) => {
+								if (!a.performance_date) return false;
+								const artistDate = a.performance_date.includes(
+									"T"
+								)
+									? a.performance_date.split("T")[0]
+									: a.performance_date;
+								const selectedDate =
+									selectedPerformanceDate.includes("T")
+										? selectedPerformanceDate.split("T")[0]
+										: selectedPerformanceDate;
+								return artistDate === selectedDate;
+							}
+						);
+
+						const assignedArtists = filteredArtists
+							.filter(
+								(a: LiveBoardArtist) =>
+									a.performance_order !== null ||
+									(a.performance_status &&
+										a.performance_status !== "not_started")
+							)
+							.map((artist: LiveBoardArtist) => ({
+								id: artist.id,
+								type: "artist" as const,
+								artist,
+								performance_order:
+									artist.performance_order || 0,
+								status:
+									artist.performance_status || "not_started",
+							}));
+
+						let cueItems: PerformanceItem[] = [];
+						try {
+							const cuesResponse = await fetch(
+								`/api/events/${profile.eventId}/cues?performanceDate=${selectedPerformanceDate}`
+							);
+							if (cuesResponse.ok) {
+								const cuesResult = await cuesResponse.json();
+								if (cuesResult.success) {
+									cueItems = cuesResult.data.map(
+										(cue: any) => ({
+											id: cue.id,
+											type: "cue" as const,
+											cue: { ...cue },
+											performance_order:
+												cue.performance_order,
+											status:
+												cue.performance_status ||
+												(cue.is_completed
+													? "completed"
+													: "not_started"),
+										})
+									);
+								}
+							}
+						} catch (cueError) {
+							console.error("Error fetching cues:", cueError);
+						}
+
+						const allItems = [...assignedArtists, ...cueItems].sort(
+							(a, b) => a.performance_order - b.performance_order
+						);
+						setPerformanceItems(allItems);
+
+						const currentIndex = allItems.findIndex(
+							(item) => item.status === "currently_on_stage"
+						);
+						if (currentIndex !== -1) {
+							setCurrentPerformerIndex(currentIndex);
+						}
+					}
+				}
+			} catch (error) {
+				console.error("Error fetching live board data:", error);
+			}
+		};
+
+		const loadEmergencyBroadcasts = async () => {
+			if (!profile?.eventId) return;
+			try {
+				const response = await fetch(
+					`/api/events/${profile.eventId}/emergency-broadcasts`
+				);
+				if (response.ok) {
+					const data = await response.json();
+					if (data.success) {
+						setEmergencyBroadcasts(data.data || []);
+					}
+				}
+			} catch (error) {
+				console.error("Error fetching emergency broadcasts:", error);
+			}
+		};
+
+		const loadEventTimings = async () => {
+			if (!profile?.eventId) return;
+			try {
+				const response = await fetch(
+					`/api/events/${profile.eventId}/timing-settings`
+				);
+				if (response.ok) {
+					const result = await response.json();
+					if (result.success && result.data) {
+						setEventTimings({
+							backstage_ready_time:
+								result.data.backstage_ready_time,
+							show_start_time: result.data.show_start_time,
+						});
+					}
+				}
+			} catch (error) {
+				console.error("Error fetching event timings:", error);
+			}
+		};
+
+		if (profile?.eventId && selectedPerformanceDate) {
+			loadLiveBoardData();
+			loadEmergencyBroadcasts();
+			loadEventTimings();
+		}
+	}, [profile?.eventId, selectedPerformanceDate, refreshTrigger]);
+
+	// Initialize WebSocket for live board updates
+	useEffect(() => {
+		if (!profile?.eventId) return;
+
+		let wsManager: any = null;
+
+		const initializeWebSocketManager = async () => {
+			try {
+				const { createWebSocketManager } = await import(
+					"@/lib/websocket-manager"
+				);
+
+				wsManager = createWebSocketManager({
+					eventId: profile.eventId,
+					role: "artist",
+					userId: `artist_${artistId}`,
+					showToasts: true, // Don't show toasts for artists
+					onConnect: () => {
+						setWsConnected(true);
+					},
+					onDisconnect: () => {
+						setWsConnected(false);
+					},
+					onDataUpdate: () => {
+						// Trigger a refresh by updating the counter
+						setRefreshTrigger((prev) => prev + 1);
+					},
+				});
+
+				await wsManager.initialize();
+				(window as any).artistLiveBoardWsManager = wsManager;
+			} catch (error) {
+				console.error("Error initializing WebSocket:", error);
+				setWsConnected(false);
+			}
+		};
+
+		initializeWebSocketManager();
+
+		return () => {
+			if ((window as any).artistLiveBoardWsManager) {
+				(window as any).artistLiveBoardWsManager.destroy();
+				delete (window as any).artistLiveBoardWsManager;
+			}
+		};
+	}, [profile?.eventId, artistId]);
 
 	const fetchArtistProfile = async () => {
 		try {
@@ -186,6 +532,79 @@ export default function ArtistDashboard() {
 				return "outline";
 		}
 	};
+
+	// Live Board helper functions
+	const getCueIcon = (cueType: string) => {
+		const iconMap: { [key: string]: any } = {
+			mc_break: Mic,
+			video_break: Video,
+			cleaning_break: Trash2,
+			speech_break: Speaker,
+			opening: Play,
+			countdown: Timer,
+			artist_ending: CheckCircle,
+			animation: Sparkles,
+		};
+		return iconMap[cueType] || Video;
+	};
+
+	const getEmergencyColor = (code: string) => {
+		switch (code) {
+			case "red":
+				return "bg-red-500 text-white";
+			case "blue":
+				return "bg-blue-500 text-white";
+			case "green":
+				return "bg-green-500 text-white";
+			default:
+				return "bg-gray-500 text-white";
+		}
+	};
+
+	const formatTimeDisplay = (seconds: number) => {
+		const hours = Math.floor(seconds / 3600);
+		const minutes = Math.floor((seconds % 3600) / 60);
+		const secs = seconds % 60;
+		return `${hours}h ${minutes}m ${secs}s`;
+	};
+
+	const formatCurrentTime = (date: Date | null) => {
+		if (!date) return "--:--:--";
+		return date.toLocaleTimeString("en-US", {
+			hour: "2-digit",
+			minute: "2-digit",
+			second: "2-digit",
+			hour12: true,
+		});
+	};
+
+	const calculateTotalShowTime = () => {
+		return performanceItems.reduce((total, item) => {
+			if (item.type === "artist" && item.artist) {
+				return total + (item.artist.performance_duration || 0);
+			} else if (item.type === "cue" && item.cue) {
+				return total + (item.cue.duration || 0) * 60;
+			}
+			return total;
+		}, 0);
+	};
+
+	const calculateRemainingTime = () => {
+		const remainingItems = performanceItems.slice(currentPerformerIndex);
+		const totalRemaining = remainingItems.reduce((total, item) => {
+			if (item.type === "artist" && item.artist) {
+				return total + (item.artist.performance_duration || 0);
+			} else if (item.type === "cue" && item.cue) {
+				return total + (item.cue.duration || 0) * 60;
+			}
+			return total;
+		}, 0);
+		return Math.max(0, totalRemaining - elapsedTime);
+	};
+
+	const getCurrentItem = () => performanceItems[currentPerformerIndex];
+	const getNextItem = () => performanceItems[currentPerformerIndex + 1];
+	const getOnDeckItem = () => performanceItems[currentPerformerIndex + 2];
 
 	if (loading) {
 		return (
@@ -304,8 +723,14 @@ export default function ArtistDashboard() {
 			</header>
 
 			<main className="container mx-auto px-4 py-8 max-w-6xl">
-				<Tabs defaultValue="overview" className="w-full">
-					<TabsList className="grid w-full grid-cols-5 bg-white rounded-xl shadow-lg  border-2 border-purple-100 mb-8">
+				<Tabs defaultValue="liveboard" className="w-full">
+					<TabsList className="grid w-full grid-cols-6 bg-white rounded-xl shadow-lg  border-2 border-purple-100 mb-8">
+						<TabsTrigger
+							value="liveboard"
+							className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-green-500 data-[state=active]:to-emerald-500 data-[state=active]:text-white rounded-lg transition-all duration-300"
+						>
+							Live Board
+						</TabsTrigger>
 						<TabsTrigger
 							value="overview"
 							className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-500 data-[state=active]:to-pink-500 data-[state=active]:text-white rounded-lg transition-all duration-300"
@@ -913,6 +1338,653 @@ export default function ArtistDashboard() {
 									<p className="text-center text-muted-foreground py-8">
 										No media files uploaded yet
 									</p>
+								)}
+							</CardContent>
+						</Card>
+					</TabsContent>
+
+					{/* Live Board Tab */}
+					<TabsContent value="liveboard" className="space-y-6">
+						{/* Performance Date Selection */}
+						{availableDates.length > 1 && (
+							<Card className="bg-white rounded-2xl shadow-lg border-2 border-purple-100">
+								<CardContent className="pt-6">
+									<div className="flex items-center gap-4">
+										<Label
+											htmlFor="performance-date-select"
+											className="text-sm font-medium whitespace-nowrap"
+										>
+											Performance Date:
+										</Label>
+										<Select
+											value={selectedPerformanceDate}
+											onValueChange={
+												setSelectedPerformanceDate
+											}
+										>
+											<SelectTrigger
+												id="performance-date-select"
+												className="w-full max-w-md"
+											>
+												<SelectValue placeholder="Select performance date" />
+											</SelectTrigger>
+											<SelectContent>
+												{availableDates.map(
+													(date, index) => (
+														<SelectItem
+															key={date}
+															value={date}
+														>
+															Day {index + 1} -{" "}
+															{formatDateSimple(
+																date
+															)}
+														</SelectItem>
+													)
+												)}
+											</SelectContent>
+										</Select>
+									</div>
+								</CardContent>
+							</Card>
+						)}
+
+						{/* Emergency Broadcasts */}
+						{emergencyBroadcasts.length > 0 && (
+							<div className="space-y-2">
+								{emergencyBroadcasts.map((broadcast) => (
+									<div
+										key={broadcast.id}
+										className={`p-4 rounded-xl ${getEmergencyColor(
+											broadcast.emergency_code
+										)} shadow-lg`}
+									>
+										<div className="flex items-center gap-3">
+											<AlertTriangle className="h-5 w-5" />
+											<div>
+												<span className="font-bold">
+													{broadcast.emergency_code.toUpperCase()}{" "}
+													ALERT:
+												</span>
+												<span className="ml-2">
+													{broadcast.message}
+												</span>
+											</div>
+										</div>
+									</div>
+								))}
+							</div>
+						)}
+
+						{/* Real-Time Clock and Timing Overview */}
+						<div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+							<Card className="bg-white rounded-2xl shadow-lg border-2 border-blue-100">
+								<CardContent className="pt-6">
+									<div className="flex items-center justify-between">
+										<div>
+											<p className="text-sm font-medium text-muted-foreground">
+												Current Time
+											</p>
+											<p className="text-2xl font-bold">
+												{formatCurrentTime(currentTime)}
+											</p>
+										</div>
+										<Clock className="h-8 w-8 text-blue-500" />
+									</div>
+								</CardContent>
+							</Card>
+
+							<Card className="bg-white rounded-2xl shadow-lg border-2 border-purple-100">
+								<CardContent className="pt-6">
+									<div className="flex items-center justify-between">
+										<div>
+											<p className="text-sm font-medium text-muted-foreground">
+												Total Show Time
+											</p>
+											<p className="text-2xl font-bold">
+												{formatTimeDisplay(
+													calculateTotalShowTime()
+												)}
+											</p>
+										</div>
+										<Timer className="h-8 w-8 text-purple-500" />
+									</div>
+								</CardContent>
+							</Card>
+
+							<Card className="bg-white rounded-2xl shadow-lg border-2 border-orange-100">
+								<CardContent className="pt-6">
+									<div className="flex items-center justify-between">
+										<div>
+											<p className="text-sm font-medium text-muted-foreground">
+												Remaining Time
+											</p>
+											<p className="text-2xl font-bold">
+												{formatTimeDisplay(
+													calculateRemainingTime()
+												)}
+											</p>
+										</div>
+										<Timer className="h-8 w-8 text-orange-500" />
+									</div>
+								</CardContent>
+							</Card>
+
+							<Card className="bg-white rounded-2xl shadow-lg border-2 border-green-100">
+								<CardContent className="pt-6">
+									<div className="flex items-center justify-between">
+										<div>
+											<p className="text-sm font-medium text-muted-foreground">
+												Show Start
+											</p>
+											<p className="text-2xl font-bold">
+												{eventTimings.show_start_time ||
+													"--:--"}
+											</p>
+										</div>
+										<Play className="h-8 w-8 text-green-500" />
+									</div>
+								</CardContent>
+							</Card>
+						</div>
+
+						{/* Current Performance Status */}
+						<div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+							{/* Now Performing - GREEN */}
+							<Card className="bg-green-500 text-white rounded-2xl shadow-xl">
+								<CardHeader>
+									<CardTitle className="flex items-center gap-2">
+										<Clock className="h-5 w-5" />
+										NOW PERFORMING
+									</CardTitle>
+								</CardHeader>
+								<CardContent>
+									{getCurrentItem() ? (
+										<div className="text-center space-y-4">
+											{getCurrentItem()?.type ===
+												"artist" &&
+											getCurrentItem()?.artist ? (
+												<>
+													<Avatar className="h-24 w-24 mx-auto border-2 border-white">
+														<AvatarImage
+															src={
+																getCurrentItem()
+																	?.artist
+																	?.image_url
+															}
+															alt={
+																getCurrentItem()
+																	?.artist
+																	?.artist_name
+															}
+														/>
+														<AvatarFallback className="text-2xl bg-white text-green-500">
+															{getCurrentItem()
+																?.artist?.artist_name.charAt(
+																	0
+																)
+																.toUpperCase()}
+														</AvatarFallback>
+													</Avatar>
+													<div>
+														<h3 className="text-2xl font-bold">
+															{
+																getCurrentItem()
+																	?.artist
+																	?.artist_name
+															}
+														</h3>
+														<p className="text-white/80">
+															{
+																getCurrentItem()
+																	?.artist
+																	?.style
+															}
+														</p>
+														<Badge className="mt-2 bg-white text-green-500">
+															Position{" "}
+															{currentPerformerIndex +
+																1}
+														</Badge>
+													</div>
+												</>
+											) : getCurrentItem()?.type ===
+													"cue" &&
+											  getCurrentItem()?.cue ? (
+												<>
+													<div className="h-24 w-24 mx-auto border-2 border-white rounded-full flex items-center justify-center bg-white text-green-500">
+														{(() => {
+															const IconComponent =
+																getCueIcon(
+																	getCurrentItem()
+																		?.cue
+																		?.type ||
+																		""
+																);
+															return (
+																<IconComponent className="h-12 w-12" />
+															);
+														})()}
+													</div>
+													<div>
+														<h3 className="text-2xl font-bold">
+															{
+																getCurrentItem()
+																	?.cue?.title
+															}
+														</h3>
+														<p className="text-white/80">
+															{
+																getCurrentItem()
+																	?.cue
+																	?.duration
+															}{" "}
+															minutes
+														</p>
+														<Badge className="mt-2 bg-white text-green-500">
+															Position{" "}
+															{currentPerformerIndex +
+																1}
+														</Badge>
+													</div>
+												</>
+											) : null}
+										</div>
+									) : (
+										<div className="text-center py-8">
+											<p>Performance Complete!</p>
+										</div>
+									)}
+								</CardContent>
+							</Card>
+
+							{/* Next Up - YELLOW */}
+							<Card className="bg-yellow-400 text-black rounded-2xl shadow-xl">
+								<CardHeader>
+									<CardTitle className="flex items-center gap-2">
+										<Users className="h-5 w-5" />
+										NEXT UP
+									</CardTitle>
+								</CardHeader>
+								<CardContent>
+									{getNextItem() ? (
+										<div className="text-center space-y-4">
+											{getNextItem()?.type === "artist" &&
+											getNextItem()?.artist ? (
+												<>
+													<Avatar className="h-20 w-20 mx-auto border-2 border-black">
+														<AvatarImage
+															src={
+																getNextItem()
+																	?.artist
+																	?.image_url
+															}
+															alt={
+																getNextItem()
+																	?.artist
+																	?.artist_name
+															}
+														/>
+														<AvatarFallback className="text-lg bg-black text-yellow-400">
+															{getNextItem()
+																?.artist?.artist_name.charAt(
+																	0
+																)
+																.toUpperCase()}
+														</AvatarFallback>
+													</Avatar>
+													<div>
+														<h3 className="text-xl font-bold">
+															{
+																getNextItem()
+																	?.artist
+																	?.artist_name
+															}
+														</h3>
+														<p className="text-black/80">
+															{
+																getNextItem()
+																	?.artist
+																	?.style
+															}
+														</p>
+														<Badge className="mt-2 bg-black text-yellow-400">
+															Position{" "}
+															{currentPerformerIndex +
+																2}
+														</Badge>
+													</div>
+												</>
+											) : getNextItem()?.type === "cue" &&
+											  getNextItem()?.cue ? (
+												<>
+													<div className="h-20 w-20 mx-auto border-2 border-black rounded-full flex items-center justify-center bg-black text-yellow-400">
+														{(() => {
+															const IconComponent =
+																getCueIcon(
+																	getNextItem()
+																		?.cue
+																		?.type ||
+																		""
+																);
+															return (
+																<IconComponent className="h-10 w-10" />
+															);
+														})()}
+													</div>
+													<div>
+														<h3 className="text-xl font-bold">
+															{
+																getNextItem()
+																	?.cue?.title
+															}
+														</h3>
+														<p className="text-black/80">
+															{
+																getNextItem()
+																	?.cue
+																	?.duration
+															}{" "}
+															minutes
+														</p>
+														<Badge className="mt-2 bg-black text-yellow-400">
+															Position{" "}
+															{currentPerformerIndex +
+																2}
+														</Badge>
+													</div>
+												</>
+											) : null}
+										</div>
+									) : (
+										<div className="text-center py-8 text-black/70">
+											<p>No more items</p>
+										</div>
+									)}
+								</CardContent>
+							</Card>
+
+							{/* On Deck - BLUE */}
+							<Card className="bg-blue-500 text-white rounded-2xl shadow-xl">
+								<CardHeader>
+									<CardTitle className="flex items-center gap-2">
+										<Clock className="h-5 w-5" />
+										ON DECK
+									</CardTitle>
+								</CardHeader>
+								<CardContent>
+									{getOnDeckItem() ? (
+										<div className="text-center space-y-4">
+											{getOnDeckItem()?.type ===
+												"artist" &&
+											getOnDeckItem()?.artist ? (
+												<>
+													<Avatar className="h-16 w-16 mx-auto border-2 border-white">
+														<AvatarImage
+															src={
+																getOnDeckItem()
+																	?.artist
+																	?.image_url
+															}
+															alt={
+																getOnDeckItem()
+																	?.artist
+																	?.artist_name
+															}
+														/>
+														<AvatarFallback className="bg-white text-blue-500">
+															{getOnDeckItem()
+																?.artist?.artist_name.charAt(
+																	0
+																)
+																.toUpperCase()}
+														</AvatarFallback>
+													</Avatar>
+													<div>
+														<h3 className="text-lg font-bold">
+															{
+																getOnDeckItem()
+																	?.artist
+																	?.artist_name
+															}
+														</h3>
+														<p className="text-white/80">
+															{
+																getOnDeckItem()
+																	?.artist
+																	?.style
+															}
+														</p>
+														<Badge className="mt-2 bg-white text-blue-500">
+															Position{" "}
+															{currentPerformerIndex +
+																3}
+														</Badge>
+													</div>
+												</>
+											) : getOnDeckItem()?.type ===
+													"cue" &&
+											  getOnDeckItem()?.cue ? (
+												<>
+													<div className="h-16 w-16 mx-auto border-2 border-white rounded-full flex items-center justify-center bg-white text-blue-500">
+														{(() => {
+															const IconComponent =
+																getCueIcon(
+																	getOnDeckItem()
+																		?.cue
+																		?.type ||
+																		""
+																);
+															return (
+																<IconComponent className="h-8 w-8" />
+															);
+														})()}
+													</div>
+													<div>
+														<h3 className="text-lg font-bold">
+															{
+																getOnDeckItem()
+																	?.cue?.title
+															}
+														</h3>
+														<p className="text-white/80">
+															{
+																getOnDeckItem()
+																	?.cue
+																	?.duration
+															}{" "}
+															minutes
+														</p>
+														<Badge className="mt-2 bg-white text-blue-500">
+															Position{" "}
+															{currentPerformerIndex +
+																3}
+														</Badge>
+													</div>
+												</>
+											) : null}
+										</div>
+									) : (
+										<div className="text-center py-8 text-white/70">
+											<p>No one on deck</p>
+										</div>
+									)}
+								</CardContent>
+							</Card>
+						</div>
+
+						{/* Complete Performance Order */}
+						<Card className="bg-white rounded-2xl shadow-lg border-2 border-purple-100">
+							<CardHeader className="bg-gradient-to-r from-purple-50 to-pink-50 border-b border-purple-100">
+								<div className="flex items-center justify-between">
+									<CardTitle className="flex items-center gap-2">
+										<Users className="h-5 w-5" />
+										Complete Performance Order
+									</CardTitle>
+									<div className="flex items-center gap-2">
+										<div
+											className={`w-2 h-2 rounded-full ${
+												wsConnected
+													? "bg-green-500 animate-pulse"
+													: "bg-red-500"
+											}`}
+										></div>
+										<span className="text-xs text-muted-foreground">
+											{wsConnected ? "Live" : "Offline"}
+										</span>
+									</div>
+								</div>
+								<CardDescription>
+									Full lineup for tonight's show
+								</CardDescription>
+							</CardHeader>
+							<CardContent className="pt-6">
+								<div className="space-y-2">
+									{performanceItems.map((item, index) => {
+										const isCurrent =
+											index === currentPerformerIndex;
+										const isCompleted =
+											index < currentPerformerIndex;
+										const isNext =
+											index === currentPerformerIndex + 1;
+										const isOnDeck =
+											index === currentPerformerIndex + 2;
+
+										return (
+											<div
+												key={item.id}
+												className={`flex items-center gap-3 p-3 rounded-lg border-2 ${
+													isCurrent
+														? "bg-green-50 border-green-500"
+														: isCompleted
+														? "bg-red-50 border-red-500"
+														: isNext
+														? "bg-yellow-50 border-yellow-400"
+														: isOnDeck
+														? "bg-blue-50 border-blue-500"
+														: "bg-white border-gray-200"
+												}`}
+											>
+												{item.type === "artist" &&
+												item.artist ? (
+													<>
+														<Avatar className="h-8 w-8">
+															<AvatarImage
+																src={
+																	item.artist
+																		.image_url
+																}
+																alt={
+																	item.artist
+																		.artist_name
+																}
+															/>
+															<AvatarFallback>
+																{item.artist.artist_name
+																	.charAt(0)
+																	.toUpperCase()}
+															</AvatarFallback>
+														</Avatar>
+														<div className="flex-1">
+															<div className="font-medium">
+																{
+																	item.artist
+																		.artist_name
+																}
+															</div>
+															<div className="text-sm text-muted-foreground">
+																{
+																	item.artist
+																		.style
+																}
+															</div>
+														</div>
+													</>
+												) : item.type === "cue" &&
+												  item.cue ? (
+													<>
+														<div className="h-8 w-8 rounded-full flex items-center justify-center bg-muted">
+															{(() => {
+																const IconComponent =
+																	getCueIcon(
+																		item.cue
+																			?.type ||
+																			""
+																	);
+																return (
+																	<IconComponent className="h-4 w-4" />
+																);
+															})()}
+														</div>
+														<div className="flex-1">
+															<div className="font-medium">
+																{item.cue.title}
+															</div>
+															<div className="text-sm text-muted-foreground">
+																{item.cue.type.replace(
+																	"_",
+																	" "
+																)}{" "}
+																•{" "}
+																{
+																	item.cue
+																		.duration
+																}{" "}
+																min
+															</div>
+														</div>
+													</>
+												) : null}
+												<Badge
+													variant={
+														isCurrent
+															? "default"
+															: isCompleted
+															? "destructive"
+															: isNext
+															? "secondary"
+															: isOnDeck
+															? "outline"
+															: "outline"
+													}
+													className={
+														isCurrent
+															? "bg-green-500 text-white"
+															: isCompleted
+															? "bg-red-500 text-white"
+															: isNext
+															? "bg-yellow-400 text-black"
+															: isOnDeck
+															? "bg-blue-500 text-white"
+															: ""
+													}
+												>
+													{isCurrent
+														? "NOW PERFORMING"
+														: isCompleted
+														? "COMPLETED"
+														: isNext
+														? "NEXT UP"
+														: isOnDeck
+														? "ON DECK"
+														: "WAITING"}
+												</Badge>
+											</div>
+										);
+									})}
+								</div>
+
+								{performanceItems.length === 0 && (
+									<div className="text-center py-12">
+										<Clock className="h-16 w-16 mx-auto mb-4 opacity-50" />
+										<h3 className="text-lg font-medium mb-2">
+											No performances scheduled
+										</h3>
+										<p className="text-muted-foreground">
+											Check back later for the performance
+											schedule
+										</p>
+									</div>
 								)}
 							</CardContent>
 						</Card>
